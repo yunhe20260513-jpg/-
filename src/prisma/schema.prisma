@@ -1,0 +1,207 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model SourcePost {
+  id          String   @id @default(cuid())
+  source      String
+  externalId  String?
+  url         String?
+  title       String?
+  authorName  String?
+  content     String
+  snippet     String?
+  publishedAt DateTime?
+  fetchedAt   DateTime @default(now())
+  rawJson     String?
+  contentHash String
+  isMock      Boolean  @default(false)
+  leads       Lead[]
+
+  @@unique([source, externalId])
+  @@index([source])
+  @@index([url])
+  @@index([contentHash])
+  @@index([isMock])
+}
+
+model Lead {
+  id                String     @id @default(cuid())
+  postId            String     @unique
+  post              SourcePost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  rawScore          Int
+  score             Int
+  grade             String     @default("B")
+  signalTypes       String     @default("[]")
+  urgency           Int        @default(1)
+  isRelevant        Boolean    @default(true)
+  isBusinessNeed    Boolean    @default(false)
+  isComplaint       Boolean    @default(false)
+  hasBuyingIntent   Boolean    @default(false)
+  isLowValue        Boolean    @default(false)
+  customerType      String     @default("未知")
+  matchedKeywords   String
+  reason            String
+  summary           String
+  suggestedReply    String
+  recommendedAction String
+  status            String     @default("new")
+  isStarred         Boolean    @default(false)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  @@index([score])
+  @@index([grade])
+  @@index([status])
+  @@index([isStarred])
+}
+
+model Keyword {
+  id        String   @id @default(cuid())
+  group     String
+  value     String   @unique
+  isActive  Boolean  @default(true)
+  weight    Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([group])
+  @@index([isActive])
+}
+
+model ScanLog {
+  id               String    @id @default(cuid())
+  source           String
+  startedAt        DateTime  @default(now())
+  finishedAt       DateTime?
+  status           String
+  fetchedCount     Int       @default(0)
+  createdLeadCount Int       @default(0)
+  errorMessage     String?
+}
+
+model AdapterStatus {
+  id            String    @id @default(cuid())
+  source        String    @unique
+  status        String
+  lastRunAt     DateTime?
+  lastSuccessAt DateTime?
+  errorMessage  String?
+  updatedAt     DateTime  @updatedAt
+}
+
+model BlacklistKeyword {
+  id        String   @id @default(cuid())
+  value     String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+}
+
+model DailyStats {
+  id               String   @id @default(cuid())
+  date             String   @unique
+  newLeadCount     Int      @default(0)
+  sGradeCount      Int      @default(0)
+  topKeywordsJson  String   @default("[]")
+  sourceCountsJson String   @default("{}")
+  signalCountsJson String   @default("{}")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model TenderLead {
+  id              String   @id @default(cuid())
+  source          String
+  tenderName      String
+  agencyName      String?
+  jobNumber       String   @unique
+  announceDate    DateTime?
+  deadlineDate    DateTime?
+  budgetAmount    Int?
+  tenderMethod    String?
+  procurementType String?
+  url             String
+  rawJson         String?
+  rawScore        Int
+  score           Int
+  grade           String
+  matchedKeywords String
+  reason          String
+  status          String   @default("new")
+  isStarred       Boolean  @default(false)
+  fetchedAt       DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([source])
+  @@index([grade])
+  @@index([status])
+  @@index([deadlineDate])
+  @@index([budgetAmount])
+  @@index([isStarred])
+}
+
+model Signal {
+  id              String   @id @default(cuid())
+  type            String
+  source          String
+  title           String
+  name            String?
+  url             String
+  summary         String?
+  rawJson         String?
+  rawScore        Int
+  score           Int
+  grade           String
+  matchedKeywords String
+  reason          String
+  suggestedAction String
+  status          String   @default("new")
+  isStarred       Boolean  @default(false)
+  publishedAt     DateTime?
+  fetchedAt       DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([type, url])
+  @@index([type])
+  @@index([source])
+  @@index([grade])
+  @@index([status])
+  @@index([isStarred])
+  @@index([publishedAt])
+}
+
+model CompanyCache {
+  id               String   @id @default(cuid())
+  taxId            String   @unique
+  name             String
+  address          String
+  city             String?
+  district         String?
+  capitalAmount    String?
+  setupDate        DateTime?
+  organizationType String?
+  useInvoice       String?
+  industryCode     String?
+  industryName     String?
+  source           String   @default("fia_tax_zip")
+  sourceUrl        String?
+  rawJson          String?
+  importedAt       DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([district])
+  @@index([setupDate])
+  @@index([industryName])
+  @@index([importedAt])
+}

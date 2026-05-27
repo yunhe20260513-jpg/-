@@ -140,6 +140,7 @@ function renderCompany(signal) {
   return companyCard(signal, raw, `
     <a class="btn ghost" href="${escapeAttr(googleUrl)}" target="_blank" rel="noopener noreferrer">Google \u641c\u5c0b\u516c\u53f8</a>
     <a class="btn ghost" href="${escapeAttr(mapsUrl)}" target="_blank" rel="noopener noreferrer">Google Maps \u641c\u5c0b\u5730\u5740</a>
+    <button class="btn ghost" data-contact-lookup data-name="${escapeAttr(signal.title)}" data-address="${escapeAttr(raw.address || "")}" data-tax-id="${escapeAttr(raw.taxId || "")}">\u67e5\u96fb\u8a71</button>
     <button class="btn ghost" data-signal-star-id="${signal.id}" data-star="${signal.isStarred}">${signal.isStarred ? "\u5df2\u6536\u85cf" : "\u6536\u85cf"}</button>
     ${statusSelect(signal)}
   `);
@@ -186,6 +187,7 @@ function companyCard(signal, raw, actions) {
       <div class="address-row"><span>\u5730\u5740</span><p>${escapeHtml(address || signal.summary || "-")}</p></div>
       <div class="reason">${escapeHtml(signal.reason || "")}</div>
       <blockquote>${escapeHtml(signal.suggestedAction || "")}</blockquote>
+      <div class="contact-result" data-contact-result></div>
       <div class="card-footer">
         <small>${signalTypeLabel(signal.type)} \u00b7 ${escapeHtml(signal.source)} \u00b7 \u6293\u53d6 ${formatDate(signal.fetchedAt)}</small>
         <div class="actions">${actions}</div>
@@ -241,6 +243,36 @@ function bindSignalActions(root) {
       await refreshAll();
     })
   );
+  root.querySelectorAll("[data-contact-lookup]").forEach((button) =>
+    button.addEventListener("click", async () => {
+      const card = button.closest(".company-card");
+      const box = card?.querySelector("[data-contact-result]");
+      if (!box) return;
+      button.disabled = true;
+      box.innerHTML = `<span class="loading">\u67e5\u8a62\u516c\u958b\u641c\u5c0b\u7d50\u679c\u4e2d...</span>`;
+      try {
+        const params = new URLSearchParams({
+          name: button.dataset.name || "",
+          address: button.dataset.address || "",
+          taxId: button.dataset.taxId || ""
+        });
+        const result = await fetchJson(`/api/contact-lookup?${params}`);
+        box.innerHTML = renderContactResult(result);
+      } catch (error) {
+        box.innerHTML = `<span class="warning">\u67e5\u8a62\u5931\u6557\uff1a${escapeHtml(error.message || error)}</span>`;
+      } finally {
+        button.disabled = false;
+      }
+    })
+  );
+}
+
+function renderContactResult(result) {
+  const phones = Array.isArray(result.phones) && result.phones.length ? result.phones.map((phone) => `<b>${escapeHtml(phone)}</b>`).join("") : `<span>\u6c92\u6709\u627e\u5230\u660e\u78ba\u96fb\u8a71</span>`;
+  const sources = Array.isArray(result.sources) && result.sources.length
+    ? result.sources.slice(0, 3).map((source) => `<a href="${escapeAttr(source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.title || source.url)}</a>`).join("")
+    : "";
+  return `<div class="contact-box"><div class="phone-list">${phones}</div><small>${escapeHtml(result.note || "")}</small><div class="contact-sources">${sources}</div></div>`;
 }
 
 function stat(value, label, suffix = "", className = "") {

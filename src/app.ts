@@ -11,6 +11,7 @@ import { blacklistRouter } from "./routes/blacklist.routes";
 import { statsRouter } from "./routes/stats.routes";
 import { tendersRouter } from "./routes/tenders.routes";
 import { signalsRouter } from "./routes/signals.routes";
+import { contactLookupRouter } from "./routes/contactLookup.routes";
 import { scanAllSources } from "./services/scanner.service";
 
 export function createApp() {
@@ -29,6 +30,7 @@ export function createApp() {
   app.use("/api/stats", statsRouter);
   app.use("/api/tenders", tendersRouter);
   app.use("/api/signals", signalsRouter);
+  app.use("/api/contact-lookup", contactLookupRouter);
   app.use("/api/search-links", searchLinksRouter);
   app.post("/api/scan-now", async (_req, res) => {
     const results = await scanAllSources();

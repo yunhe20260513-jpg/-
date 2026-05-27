@@ -297,6 +297,56 @@ input {
   border: 1px solid #d0d5dd;
 }
 
+.contact-result:empty {
+  display: none;
+}
+
+.contact-box {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #d0d5dd;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.phone-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.phone-list b {
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #ecfdf3;
+  color: #027a48;
+}
+
+.contact-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.contact-sources a {
+  color: #175cd3;
+  font-size: 12px;
+}
+
+.loading,
+.warning {
+  display: inline-block;
+  margin-top: 10px;
+  color: #667085;
+  font-size: 13px;
+}
+
+.warning {
+  color: #b42318;
+}
+
 .status-badge i {
   width: 8px;
   height: 8px;

@@ -160,6 +160,7 @@ model Signal {
   rawJson         String?
   rawScore        Int
   score           Int
+  priorityScore   Int      @default(0)
   grade           String
   matchedKeywords String
   reason          String
@@ -175,6 +176,7 @@ model Signal {
   @@index([type])
   @@index([source])
   @@index([grade])
+  @@index([priorityScore])
   @@index([status])
   @@index([isStarred])
   @@index([publishedAt])
@@ -196,6 +198,7 @@ model CompanyCache {
   source           String   @default("fia_tax_zip")
   sourceUrl        String?
   rawJson          String?
+  signalGeneratedAt DateTime?
   importedAt       DateTime @default(now())
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -204,4 +207,5 @@ model CompanyCache {
   @@index([setupDate])
   @@index([industryName])
   @@index([importedAt])
+  @@index([signalGeneratedAt])
 }

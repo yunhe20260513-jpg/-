@@ -19,7 +19,7 @@ const contractKeywords = ["租約到期", "合約快到", "想換廠商", "換�
 const taoyuanKeywords = ["桃園", "桃園市", "中壢", "平鎮", "八德", "龜山", "蘆竹", "大園", "楊梅", "龍潭", "觀音"];
 
 export function scoreSignal(signal: SignalInput): SignalScore {
-  const embedded = embeddedCompanyScore(signal);
+  const embedded = embeddedSignalScore(signal);
   if (embedded) return embedded;
 
   const text = [signal.title, signal.name, signal.summary].filter(Boolean).join(" ");
@@ -45,8 +45,8 @@ export function scoreSignal(signal: SignalInput): SignalScore {
   };
 }
 
-function embeddedCompanyScore(signal: SignalInput): SignalScore | null {
-  if (signal.type !== "company" || typeof signal.rawJson !== "object" || signal.rawJson === null) return null;
+function embeddedSignalScore(signal: SignalInput): SignalScore | null {
+  if ((signal.type !== "company" && signal.type !== "contract_maturity") || typeof signal.rawJson !== "object" || signal.rawJson === null) return null;
   const scoring = (signal.rawJson as Record<string, unknown>).scoring;
   if (typeof scoring !== "object" || scoring === null) return null;
   const record = scoring as Record<string, unknown>;

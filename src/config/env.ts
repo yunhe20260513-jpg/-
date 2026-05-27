@@ -16,6 +16,7 @@ const schema = z.object({
   COMPANY_OPEN_DATA_ENDPOINT: z.string().default("https://eip.fia.gov.tw/data/BGMOPEN1.zip"),
   COMPANY_OPEN_DATA_MODE: z.enum(["candidate_sources", "tax_zip"]).default("candidate_sources"),
   COMPANY_OPEN_DATA_LIMIT: z.coerce.number().default(200),
+  COMPANY_BASELINE_IMPORT: z.coerce.boolean().default(false),
   FIA_BUSINESS_REGISTRATION_ENDPOINT: z.string().default("https://eip.fia.gov.tw/OAI/api/businessRegistration"),
   SEARCH_PROVIDER: z.enum(["bing", "google"]).default("bing"),
   SEARCH_RESULTS_PER_QUERY: z.coerce.number().default(8),

@@ -37,7 +37,7 @@ signalsRouter.get("/", async (req, res) => {
       AND: companyFilters.length ? companyFilters : undefined,
       OR: keywordFilters.length ? keywordFilters : undefined
     },
-    orderBy: [{ grade: "asc" }, { createdAt: "desc" }],
+    orderBy: [{ grade: "asc" }, { priorityScore: "desc" }, { createdAt: "desc" }],
     take: 150
   });
 

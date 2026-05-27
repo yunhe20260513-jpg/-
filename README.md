@@ -1,31 +1,35 @@
 # 允禾桃園辦公室設備需求情報系統
 
-這不是自動留言機器人，也不是帳號農場。這個 MVP 的目標是把真實公開資料整理成可人工開發的商機雷達，優先找出桃園最近新成立、可能需要影印機/事務機/印表機/掃描設備的公司。
+這是一個給影印機、事務機、印表機維修與租賃服務商使用的商機雷達 MVP。系統以桃園為優先市場，從真實公開資料與公開網頁訊號中整理出可能需要 OA / 辦公室設備服務的公司、機關與貼文。
 
-系統原則：
+核心原則：
 
 - 不自動留言
 - 不自動私訊
 - 不登入 Facebook / Threads
-- 不建立 mock lead
-- 不顯示 fake success
-- 抓不到真資料就顯示 unavailable / failed / no_results
-- OpenAI API 可選，預設不依賴
+- 不使用 mock lead
+- 沒有真實 URL 或真實來源不建立資料
+- 寧願顯示 unavailable，也不假裝成功
+- OpenAI / AI 分析為選配，預設不依賴
 
-## 核心 MVP
+## 目前 MVP 功能
 
-目前保留的核心功能：
+- 桃園新成立公司雷達：匯入財政部營業稅籍 ZIP，篩選桃園公司並依行業與成立時間評分。
+- 租約成熟度雷達：找出成立 30-48 個月、可能進入 OA 租賃換約期的桃園公司。
+- PTT 真實文章雷達：抓取公開 PTT 看板文章。
+- 公開搜尋雷達：用公開搜尋結果監控 Threads、Dcard、PTT、Mobile01、Facebook 公開頁。
+- 標案雷達：嘗試讀取公開標案來源，抓不到時不產生假資料。
+- Signal 後台：S/A/B 分級、收藏、狀態追蹤、一鍵 Google / Maps / 原文連結。
 
-- 桃園新成立公司雷達
-- PTT 真實文章雷達
-- 搜尋引擎公開搜尋雷達
-- 台灣標案雷達，endpoint 不確定時顯示 unavailable
-- 租約到期 / 想換廠商雷達
-- 競品抱怨雷達
-- Signal 後台
-- S/A/B 分級
-- 收藏與狀態追蹤
-- 一鍵 Google 搜尋 / Google Maps / 開原文
+## 技術棧
+
+- Node.js
+- TypeScript
+- Express
+- SQLite
+- Prisma ORM
+- dotenv
+- 原生 HTML / CSS / JavaScript 後台
 
 ## 安裝
 
@@ -33,12 +37,15 @@
 npm install
 ```
 
-## .env 範例
+## 環境變數
+
+建立 `.env`：
 
 ```env
 DATABASE_URL="file:./dev.db"
 APP_PORT=3000
 SCAN_INTERVAL_SECONDS=300
+
 USE_AI_ANALYSIS=false
 OPENAI_API_KEY=
 ALLOW_MOCK_DATA=false
@@ -48,7 +55,7 @@ ALLOW_AUTO_DM=false
 COMPANY_OPEN_DATA_ENDPOINT="https://eip.fia.gov.tw/data/BGMOPEN1.zip"
 COMPANY_OPEN_DATA_MODE="tax_zip"
 COMPANY_OPEN_DATA_LIMIT=200
-FIA_BUSINESS_REGISTRATION_ENDPOINT="https://eip.fia.gov.tw/OAI/api/businessRegistration"
+COMPANY_BASELINE_IMPORT=false
 
 SEARCH_PROVIDER=bing
 SEARCH_RESULTS_PER_QUERY=8
@@ -56,12 +63,40 @@ MAX_RESULT_AGE_DAYS=90
 SEARCH_DELAY_MS=800
 ```
 
-## 初始化
+## 初始化 SQLite
 
 ```bash
 npm run prisma:migrate
 npm run seed
 ```
+
+## 匯入桃園公司資料
+
+系統優先使用財政部營業稅籍 ZIP：
+
+```text
+https://eip.fia.gov.tw/data/BGMOPEN1.zip
+```
+
+可自動下載，也可以手動下載後放到：
+
+```text
+data/company/BGMOPEN1.zip
+```
+
+手動匯入：
+
+```bash
+npm run company:import-local
+```
+
+重新整理快取：
+
+```bash
+npm run company-cache:refresh
+```
+
+匯入後會產生 `IMPORT_REPORT.md`，記錄 ZIP hash、解析筆數、桃園筆數與排除原因。
 
 ## 啟動後台
 
@@ -75,115 +110,51 @@ npm run dev
 http://localhost:3000
 ```
 
-## 桃園新公司 ZIP
+## 掃描
 
-主要來源：
-
-```text
-https://eip.fia.gov.tw/data/BGMOPEN1.zip
-```
-
-系統會先檢查：
-
-```text
-data/company/BGMOPEN1.zip
-```
-
-如果本地 ZIP 存在，優先使用本地檔。若不存在，才下載官方 ZIP。
-
-下載 fallback：
-
-1. fetch
-2. axios
-3. Node https stream
-
-下載後會檢查：
-
-- 檔案存在
-- 大小 > 1MB
-- ZIP header 正確
-
-解壓使用 `adm-zip`，不依賴 PowerShell，可部署到 Windows、Linux、VPS、Railway、Render。
-
-## 手動匯入 ZIP
-
-如果自動下載失敗，可以手動下載：
-
-```text
-https://eip.fia.gov.tw/data/BGMOPEN1.zip
-```
-
-放到：
-
-```text
-data/company/BGMOPEN1.zip
-```
-
-執行：
+執行全部掃描：
 
 ```bash
-npm run company:import-local
+npm run scan:once
 ```
 
-## 更新 CompanyCache
+後台也提供：
 
-```bash
-npm run company-cache:refresh
+- 掃描全部
+- 掃描桃園新公司
+- 掃描標案
+
+## 首刷基準模式
+
+第一次匯入大量歷史公司資料時，建議先使用：
+
+```env
+COMPANY_BASELINE_IMPORT=true
 ```
 
-日常掃描會先看 SQLite cache。若今天已經匯入過，會 skipped，不會每分鐘重抓官方 ZIP。
+這會建立 CompanyCache，但不會把大量歷史公司灌進正式 Signal。完成基準匯入後，再改回：
 
-## 如何確認是真資料
-
-查 CompanyCache 數量：
-
-```bash
-npx prisma studio --schema src/prisma/schema.prisma
+```env
+COMPANY_BASELINE_IMPORT=false
 ```
 
-或看後台「桃園新公司雷達」。每筆公司都會有：
+## 資料品質規則
 
-- 統編
-- 公司/營業人名稱
-- 桃園地址
-- 行政區
-- 設立日期
-- 行業
-- 資本額
-- 組織別
-- 是否使用統一發票
-- 一鍵 Google
-- 一鍵 Google Maps
+- mock/test 資料不得進正式資料表
+- 沒有 URL 的公開網頁不建立 Lead
+- 公司資料以統編去重
+- Signal 以 `type + url` 去重
+- 公司成立日期解析失敗會被排除，不會預設為今天
+- ZIP 下載失敗時保留舊 cache，不清空資料
 
-## 常見錯誤
+## 來源限制
 
-### fetch failed
+- Facebook / Threads 不登入、不抓登入後內容，只透過公開搜尋結果。
+- 搜尋引擎可能擋爬，失敗時會記錄狀態，不產生假資料。
+- 標案來源若 API 無資料或格式變動，會標示 unavailable / no_results。
+- Dcard / Mobile01 直接 adapter 尚未視為穩定來源，優先使用公開搜尋結果。
 
-代表 Node fetch 下載失敗。系統會改用 axios 與 Node https stream。若三者都失敗，會保留舊 cache。
-
-### ZIP 下載失敗
-
-請手動下載 ZIP 到：
-
-```text
-data/company/BGMOPEN1.zip
-```
-
-再執行：
-
-```bash
-npm run company:import-local
-```
-
-### unavailable
-
-代表資料來源目前不可用，系統不會建立假資料。
-
-### no_results
-
-代表來源可用，但這輪沒有符合規則的新資料。
-
-## Git 安全
+## Git 注意事項
 
 `.gitignore` 已排除：
 
@@ -194,9 +165,9 @@ npm run company:import-local
 - `data/company/*.zip`
 - `tmp/`
 
-不要把 SQLite DB、ZIP、env、node_modules 上傳到 GitHub。
+不要把 API key、SQLite DB、ZIP 大檔、`node_modules` 推上 GitHub。
 
-## scripts
+## 常用 scripts
 
 ```bash
 npm run dev

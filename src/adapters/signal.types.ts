@@ -1,4 +1,4 @@
-export type SignalType = "social" | "tender" | "company" | "hiring" | "move" | "competitor" | "contract";
+export type SignalType = "social" | "tender" | "company" | "hiring" | "move" | "competitor" | "contract" | "contract_maturity";
 
 export type SignalInput = {
   type: SignalType;

@@ -15,7 +15,7 @@ export const sGradeCompanyKeywords = [
   "地政士",
   "代書",
   "房仲",
-  "不動產仲介",
+  "不動產",
   "保險",
   "人力仲介",
   "報關",
@@ -27,15 +27,19 @@ export const aGradeCompanyKeywords = [
   "工程",
   "貿易",
   "科技",
+  "資訊",
   "管理顧問",
   "建設",
   "室內裝修",
-  "資訊",
+  "設計",
+  "旅行社",
+  "廣告",
+  "行銷",
   "顧問"
 ];
 
-const lowValueCompanyKeywords = ["工作室", "個人工作室", "接案", "家庭代工"];
-const priorityDistrictKeywords = ["桃園區", "中壢", "青埔", "蘆竹", "龜山"];
+const lowValueCompanyKeywords = ["工作室", "個人工作室", "接案", "家庭代工", "小吃", "攤販", "網拍"];
+const priorityDistrictKeywords = ["桃園區", "中壢", "青埔", "蘆竹", "龜山", "南崁"];
 
 export function scoreCompanyCache(input: {
   name: string;
@@ -50,18 +54,17 @@ export function scoreCompanyCache(input: {
   let rawScore = 0;
   const matchedKeywords: string[] = [];
 
-  for (const keyword of sGradeCompanyKeywords) {
-    if (text.includes(keyword)) matchedKeywords.push(keyword);
-  }
+  const sMatches = sGradeCompanyKeywords.filter((keyword) => text.includes(keyword));
   const aMatches = aGradeCompanyKeywords.filter((keyword) => text.includes(keyword));
-  matchedKeywords.push(...aMatches);
+  matchedKeywords.push(...sMatches, ...aMatches);
 
   const ageDays = input.setupDate ? Math.floor((Date.now() - input.setupDate.getTime()) / (24 * 60 * 60 * 1000)) : undefined;
-  const isRecent90 = ageDays !== undefined && ageDays <= 90;
-  const isRecent180 = ageDays !== undefined && ageDays <= 180;
+  const isRecent90 = ageDays !== undefined && ageDays >= 0 && ageDays <= 90;
+  const isRecent180 = ageDays !== undefined && ageDays >= 0 && ageDays <= 180;
   const isTaoyuan = isTaoyuanAddress(input.address);
-  const hasSIndustry = sGradeCompanyKeywords.some((keyword) => text.includes(keyword));
+  const hasSIndustry = sMatches.length > 0;
   const hasAIndustry = aMatches.length > 0;
+  const isLowValue = lowValueCompanyKeywords.some((keyword) => text.includes(keyword));
 
   if (isTaoyuan) rawScore += 5;
   if (isRecent90) rawScore += 6;
@@ -72,16 +75,16 @@ export function scoreCompanyCache(input: {
 
   rawScore += capitalScore(input.capitalAmount);
   rawScore += organizationScore(input.organizationType);
-  if (String(input.useInvoice ?? "").toUpperCase() === "Y") rawScore += 2;
+  if (String(input.useInvoice ?? "").includes("Y") || String(input.useInvoice ?? "").includes("是")) rawScore += 2;
   if (priorityDistrictKeywords.some((keyword) => input.address.includes(keyword))) rawScore += 2;
-  if (lowValueCompanyKeywords.some((keyword) => text.includes(keyword))) rawScore -= 4;
+  if (isLowValue) rawScore -= 6;
 
   const grade =
-    isTaoyuan && isRecent90 && hasSIndustry
+    isTaoyuan && isRecent90 && hasSIndustry && !isLowValue
       ? "S"
-      : isTaoyuan && isRecent180 && (hasSIndustry || hasAIndustry || rawScore >= 11)
+      : isTaoyuan && isRecent180 && !isLowValue && (hasSIndustry || hasAIndustry || rawScore >= 11)
         ? "A"
-        : isTaoyuan && rawScore >= 6
+        : isTaoyuan && !isLowValue && rawScore >= 6
           ? "B"
           : "C";
   const score = grade === "S" ? 5 : grade === "A" ? 4 : grade === "B" ? 3 : 1;
@@ -92,21 +95,21 @@ export function scoreCompanyCache(input: {
     grade,
     matchedKeywords: [...new Set(matchedKeywords)],
     reason: [
-      "桃園新成立公司",
+      "桃園營業登記資料",
       isRecent90 ? "最近 90 天內設立" : isRecent180 ? "最近 180 天內設立" : "設立時間較久",
-      hasSIndustry ? "命中 S 級高價值行業" : hasAIndustry ? "命中 A 級行業" : "行業價值待確認",
-      input.capitalAmount ? `資本額 ${Number(input.capitalAmount).toLocaleString("zh-TW")}` : "",
-      input.useInvoice ? `統一發票 ${input.useInvoice}` : "",
-      `分級 ${grade}`
+      hasSIndustry ? "命中 S 級高價值行業" : hasAIndustry ? "命中 A 級辦公需求行業" : "行業需求不明確",
+      input.capitalAmount ? `資本額 ${Number(input.capitalAmount).toLocaleString("zh-TW")} 元` : "",
+      input.useInvoice ? `使用統一發票：${input.useInvoice}` : "",
+      `分級：${grade}`
     ]
       .filter(Boolean)
       .join("；"),
     suggestedAction:
       grade === "S"
-        ? "優先 Google 搜尋公司與 Google Maps 地址，確認是否已開業，適合人工開發影印機/事務機租賃或維護需求。"
+        ? "優先開發。先用 Google 與 Google Maps 確認是否已開業，再以辦公設備租賃、維修反應時間、耗材全包方案切入。"
         : grade === "A"
-          ? "可加入觀察名單，確認是否有辦公室、櫃台或文件處理需求。"
-          : "先觀察，不急著聯繫。"
+          ? "可列入追蹤。確認是否有實體辦公室與文件量，再評估是否主動開發。"
+          : "先觀察，不建議投入太多人工時間。"
   };
 }
 
@@ -134,7 +137,7 @@ export function isTaoyuanAddress(address: string) {
 }
 
 function capitalScore(value?: string | null) {
-  const amount = Number(value ?? 0);
+  const amount = Number(String(value ?? "").replace(/[^\d]/g, ""));
   if (!Number.isFinite(amount)) return 0;
   if (amount >= 5_000_000) return 5;
   if (amount >= 1_000_000) return 3;
@@ -146,6 +149,6 @@ function organizationScore(value?: string | null) {
   const text = value ?? "";
   if (text.includes("股份有限公司")) return 3;
   if (text.includes("有限公司")) return 2;
-  if (text.includes("行號") || text.includes("獨資") || text.includes("合夥")) return 1;
+  if (text.includes("行號") || text.includes("商行") || text.includes("企業社")) return 1;
   return 0;
 }

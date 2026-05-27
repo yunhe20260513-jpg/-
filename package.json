@@ -1,36 +1,36 @@
-{
-  "name": "yunhe-office-lead-radar",
-  "version": "0.1.0",
-  "description": "桃園辦公室設備需求情報系統 MVP",
-  "main": "dist/server.js",
-  "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "build": "tsc",
-    "start": "node dist/server.js",
-    "prisma:migrate": "prisma migrate dev --schema src/prisma/schema.prisma",
-    "prisma:studio": "prisma studio --schema src/prisma/schema.prisma",
-    "scan:once": "tsx src/jobs/scan.job.ts",
-    "company-cache:refresh": "tsx src/jobs/companyCache.job.ts",
-    "company:import-local": "tsx src/jobs/companyCache.job.ts --local",
-    "seed": "tsx src/prisma/seed.ts"
-  },
-  "dependencies": {
-    "@prisma/client": "^5.22.0",
-    "adm-zip": "^0.5.17",
-    "axios": "^1.16.1",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.7",
-    "express": "^4.21.2",
-    "openai": "^4.76.3",
-    "zod": "^3.24.1"
-  },
-  "devDependencies": {
-    "@types/adm-zip": "^0.5.8",
-    "@types/cors": "^2.8.17",
-    "@types/express": "^4.17.21",
-    "@types/node": "^22.10.2",
-    "prisma": "^5.22.0",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
-  }
+﻿{
+    "name":  "yunhe-office-lead-radar",
+    "version":  "0.1.0",
+    "description":  "桃園辦公室設備需求情報系統 MVP",
+    "main":  "dist/server.js",
+    "scripts":  {
+                    "dev":  "tsx watch src/server.ts",
+                    "build":  "tsc",
+                    "start":  "node dist/server.js",
+                    "prisma:migrate":  "prisma migrate dev --schema src/prisma/schema.prisma",
+                    "prisma:studio":  "prisma studio --schema src/prisma/schema.prisma",
+                    "scan:once":  "tsx src/jobs/scan.job.ts",
+                    "company-cache:refresh":  "tsx src/jobs/companyCache.job.ts",
+                    "company:import-local":  "tsx src/jobs/companyCache.job.ts --local",
+                    "seed":  "tsx src/prisma/seed.ts"
+                },
+    "dependencies":  {
+                         "@prisma/client":  "^5.22.0",
+                         "adm-zip":  "^0.5.17",
+                         "axios":  "^1.16.1",
+                         "cors":  "^2.8.5",
+                         "dotenv":  "^16.4.7",
+                         "express":  "^4.21.2",
+                         "openai":  "^4.76.3",
+                         "zod":  "^3.24.1"
+                     },
+    "devDependencies":  {
+                            "@types/adm-zip":  "^0.5.8",
+                            "@types/cors":  "^2.8.17",
+                            "@types/express":  "^4.17.21",
+                            "@types/node":  "^22.10.2",
+                            "prisma":  "^5.22.0",
+                            "tsx":  "^4.19.2",
+                            "typescript":  "^5.7.2"
+                        }
 }

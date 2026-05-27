@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>允禾辦公室設備需求訊號雷達</title>
+    <title>允禾需求訊號雷達</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
     <header class="topbar">
       <div>
         <h1>允禾需求訊號雷達</h1>
-        <p>桃園優先、真實 URL 優先、可成交訊號優先。不自動留言、不使用假資料。</p>
+        <p>桃園優先、真實 URL 優先、可成交訊號優先。不自動留言，不使用假資料。</p>
       </div>
       <div class="top-actions">
         <button id="scanNow">掃描全部</button>
@@ -32,8 +32,8 @@
             <option value="60">最近 60 天</option>
             <option value="180">最近 180 天</option>
           </select>
-          <input id="companyDistrictFilter" placeholder="行政區，例如 中壢區" />
-          <input id="companyIndustryFilter" placeholder="行業，例如 診所、補習班" />
+          <input id="companyDistrictFilter" placeholder="行政區，例如中壢區" />
+          <input id="companyIndustryFilter" placeholder="行業，例如診所、補習班" />
           <select id="companyGradeFilter">
             <option value="">全部分級</option>
             <option value="S">S 級</option>
@@ -57,6 +57,7 @@
         <div class="toolbar">
           <select id="signalTypeFilter">
             <option value="">全部訊號</option>
+            <option value="contract_maturity">租約成熟度雷達</option>
             <option value="contract">租約到期</option>
             <option value="competitor">競品抱怨</option>
             <option value="move">搬遷/擴編</option>
@@ -79,7 +80,7 @@
         <h2>社群 / 公開網頁商機</h2>
         <div class="toolbar">
           <select id="leadSourceFilter">
-            <option value="">全部平台</option>
+            <option value="">全部來源</option>
             <option value="ptt">PTT</option>
             <option value="threads">Threads</option>
             <option value="dcard">Dcard</option>

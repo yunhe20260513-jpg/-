@@ -93,48 +93,69 @@ async function getSignalTodayStats(start: Date, end: Date) {
     todayTenderSignals: signals.filter((signal) => signal.type === "tender").length,
     todayCompanySignals: signals.filter((signal) => signal.type === "company").length,
     todayContractSignals: signals.filter((signal) => signal.type === "contract").length,
+    todayContractMaturitySignals: signals.filter((signal) => signal.type === "contract_maturity").length,
     todayCompetitorSignals: signals.filter((signal) => signal.type === "competitor").length,
+    monthContractMaturityCount: await contractMaturityMonthCount(),
+    topContractMaturity: await topContractMaturitySignals(),
     topKeywords: topEntries(keywordCounts, 10),
     sourceCounts: Object.fromEntries(sourceCounts),
     typeCounts: Object.fromEntries(typeCounts),
     weeklyTrend: buildWeeklyTrend(weeklySignals),
-    company: companySignalStats(signals.filter((signal) => signal.type === "company"))
+    company: await companyCacheStats()
   };
 }
 
-function companySignalStats(signals: { publishedAt: Date | null; summary: string | null; rawJson: string | null }[]) {
-  const latestDate = signals
-    .map((signal) => signal.publishedAt)
-    .filter((date): date is Date => Boolean(date))
-    .sort((a, b) => b.getTime() - a.getTime())[0];
+async function contractMaturityMonthCount() {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  return prisma.signal.count({
+    where: {
+      type: "contract_maturity",
+      createdAt: { gte: monthStart },
+      status: { not: "ignored" }
+    }
+  });
+}
+
+async function topContractMaturitySignals() {
+  return prisma.signal.findMany({
+    where: {
+      type: "contract_maturity",
+      status: { not: "ignored" }
+    },
+    orderBy: [{ priorityScore: "desc" }, { createdAt: "desc" }],
+    take: 20,
+    select: {
+      id: true,
+      title: true,
+      grade: true,
+      score: true,
+      priorityScore: true,
+      summary: true,
+      url: true,
+      createdAt: true
+    }
+  });
+}
+
+async function companyCacheStats() {
+  const companies = await prisma.companyCache.findMany({
+    orderBy: [{ setupDate: "desc" }],
+    take: 5000
+  });
+  const latestDate = companies.map((company) => company.setupDate).filter((date): date is Date => Boolean(date))[0];
   const industries = new Map<string, number>();
   const regions = new Map<string, number>();
 
-  for (const signal of signals) {
-    const parsed = parseJson<Record<string, unknown>>(signal.rawJson ?? "{}", {});
-    const fia = typeof parsed.fia === "object" && parsed.fia !== null ? (parsed.fia as Record<string, unknown>) : {};
-    const industry =
-      typeof parsed.industryName === "string"
-        ? parsed.industryName
-        : typeof fia.industryNm === "string"
-          ? fia.industryNm
-          : undefined;
-    const address =
-      typeof parsed.address === "string"
-        ? parsed.address
-        : typeof fia.businessAddress === "string"
-          ? fia.businessAddress
-          : signal.summary ?? "";
-
-    if (industry) industries.set(industry, (industries.get(industry) ?? 0) + 1);
-    const region = inferRegion(address);
-    if (region) regions.set(region, (regions.get(region) ?? 0) + 1);
+  for (const company of companies) {
+    if (company.industryName) industries.set(company.industryName, (industries.get(company.industryName) ?? 0) + 1);
+    if (company.district) regions.set(company.district, (regions.get(company.district) ?? 0) + 1);
   }
 
   return {
     latestSetupDate: latestDate?.toISOString() ?? null,
-    highValueIndustries: Object.fromEntries(industries),
-    regionCounts: Object.fromEntries(regions)
+    highValueIndustries: Object.fromEntries(topEntries(industries, 6).map((item) => [item.value, item.count])),
+    regionCounts: Object.fromEntries(topEntries(regions, 8).map((item) => [item.value, item.count]))
   };
 }
 

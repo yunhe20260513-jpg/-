@@ -1,6 +1,7 @@
 import AdmZip from "adm-zip";
 import axios from "axios";
-import { createWriteStream } from "fs";
+import crypto from "crypto";
+import { createReadStream, createWriteStream } from "fs";
 import { access, mkdir, readFile, rm, stat, writeFile } from "fs/promises";
 import https from "https";
 import os from "os";
@@ -8,20 +9,160 @@ import path from "path";
 import { pipeline } from "stream/promises";
 import { env } from "../config/env";
 import { prisma } from "../prisma/client";
+import { markAdapterFailed, markAdapterRunning, markAdapterSuccess } from "./adapterStatus.service";
 import { isTaoyuanAddress } from "./companyScoring.service";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const MIN_ZIP_BYTES = 1_000_000;
 const LOCAL_ZIP_PATH = path.join(process.cwd(), "data", "company", "BGMOPEN1.zip");
 
+const ZH = {
+  taxId: "\u7d71\u4e00\u7de8\u865f",
+  taxIdShort: "\u7d71\u7de8",
+  businessName: "\u71df\u696d\u4eba\u540d\u7a31",
+  name: "\u540d\u7a31",
+  companyName: "\u516c\u53f8\u540d\u7a31",
+  address: "\u5730\u5740",
+  businessAddress: "\u71df\u696d\u5730\u5740",
+  businessPlaceAddress: "\u71df\u696d\u5834\u6240\u5730\u5740",
+  capital: "\u8cc7\u672c\u984d",
+  setupDate: "\u8a2d\u7acb\u65e5\u671f",
+  registerDate: "\u767b\u8a18\u65e5\u671f",
+  organizationTypeName: "\u7d44\u7e54\u5225\u540d\u7a31",
+  organizationType: "\u7d44\u7e54\u5225",
+  useInvoice: "\u4f7f\u7528\u7d71\u4e00\u767c\u7968",
+  useInvoiceShort: "\u4f7f\u7528\u767c\u7968",
+  industryCode: "\u884c\u696d\u4ee3\u865f",
+  industryCode1: "\u884c\u696d\u4ee3\u865f1",
+  industryName: "\u884c\u696d\u540d\u7a31",
+  industryName1: "\u884c\u696d\u540d\u7a311",
+  industryType: "\u884c\u696d\u5225",
+  taoyuanCity: "\u6843\u5712\u5e02"
+};
+
+const COLUMN_ALIASES = {
+  taxId: [ZH.taxId, ZH.taxIdShort, "Business_Accounting_NO", "BAN"],
+  name: [ZH.businessName, ZH.name, ZH.companyName, "Business_Name", "Company_Name"],
+  address: [ZH.businessAddress, ZH.address, ZH.businessPlaceAddress, "Business_Address", "Company_Location"],
+  capitalAmount: [ZH.capital, "Capital_Stock_Amount", "Capital"],
+  setupDate: [ZH.setupDate, ZH.registerDate, "Company_Setup_Date", "Business_Setup_Date"],
+  organizationType: [ZH.organizationTypeName, ZH.organizationType, "Organization_Type", "Business_Type"],
+  useInvoice: [ZH.useInvoice, ZH.useInvoiceShort, "Use_Invoice", "isUseInvoice"],
+  industryCode: [ZH.industryCode, ZH.industryCode1, "Industry_Code", "industryCd"],
+  industryName: [ZH.industryName1, ZH.industryName, ZH.name, ZH.industryType, "Industry_Name", "industryNm"]
+};
+
+const DISTRICTS = [
+  "\u6843\u5712\u5340",
+  "\u4e2d\u58e2\u5340",
+  "\u5e73\u93ae\u5340",
+  "\u516b\u5fb7\u5340",
+  "\u8606\u7af9\u5340",
+  "\u9f9c\u5c71\u5340",
+  "\u694a\u6885\u5340",
+  "\u9f8d\u6f6d\u5340",
+  "\u5927\u6eaa\u5340",
+  "\u5927\u5712\u5340",
+  "\u89c0\u97f3\u5340",
+  "\u65b0\u5c4b\u5340",
+  "\u5fa9\u8208\u5340",
+  "\u9752\u57d4",
+  "\u5167\u58e2",
+  "\u5357\u5d01"
+];
+
 type CompanyCsvRow = Record<string, string>;
+
+type NormalizedCompany = {
+  taxId: string;
+  name: string;
+  address: string;
+  city?: string;
+  district?: string;
+  capitalAmount?: string;
+  setupDate?: Date;
+  organizationType?: string;
+  useInvoice?: string;
+  industryCode?: string;
+  industryName?: string;
+  source: string;
+  sourceUrl: string;
+  rawJson: string;
+};
+
+type ImportStats = {
+  zipHash: string;
+  zipSize: number;
+  csvColumns: string[];
+  totalRows: number;
+  totalTaoyuanRows: number;
+  totalImported: number;
+  excludeStats: {
+    notTaoyuan: number;
+    noTaxId: number;
+    noName: number;
+    shortAddress: number;
+    invalidSetupDate: number;
+  };
+  executionTime: number;
+};
+
+export class CompanyCacheService {
+  static isImporting = false;
+
+  static async importTaoyuanCompanies(zipPath: string) {
+    return importTaoyuanCompanies(zipPath);
+  }
+}
+
+export async function importTaoyuanCompanies(zipPath: string) {
+  if (CompanyCacheService.isImporting) {
+    throw new Error("CompanyCache import is already running.");
+  }
+
+  const startedAt = Date.now();
+  CompanyCacheService.isImporting = true;
+  await markAdapterRunning("company_cache");
+
+  try {
+    await assertValidZip(zipPath);
+    const zipHash = await hashFileStream(zipPath);
+    const zipInfo = await stat(zipPath);
+    const { rows, stats } = parseCompanyRowsFromZip(zipPath, {
+      zipHash,
+      zipSize: zipInfo.size
+    });
+
+    if (!rows.length) throw new Error("Company ZIP parsed, but no Taoyuan company rows were found.");
+
+    await replaceCompanyCache(rows, env.COMPANY_BASELINE_IMPORT);
+    await writeImportReport({ ...stats, totalImported: rows.length, executionTime: Date.now() - startedAt });
+    await markAdapterSuccess("company_cache");
+
+    return {
+      skipped: false,
+      baselineImport: env.COMPANY_BASELINE_IMPORT,
+      imported: rows.length,
+      totalTaoyuan: await prisma.companyCache.count(),
+      lastImportedAt: new Date(),
+      zipPath,
+      zipHash
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await markAdapterFailed("company_cache", message);
+    throw error;
+  } finally {
+    CompanyCacheService.isImporting = false;
+  }
+}
 
 export async function ensureCompanyCacheFresh() {
   const latest = await prisma.companyCache.findFirst({ orderBy: { importedAt: "desc" } });
   if (latest && Date.now() - latest.importedAt.getTime() < ONE_DAY_MS) {
     return {
       skipped: true,
-      reason: "今天已更新過 CompanyCache，略過下載。",
+      reason: "CompanyCache was updated today; skipped duplicate import.",
       imported: 0,
       totalTaoyuan: await prisma.companyCache.count(),
       lastImportedAt: latest.importedAt
@@ -48,29 +189,7 @@ export async function ensureCompanyCacheFresh() {
 
 export async function refreshCompanyCache(options: { preferLocal?: boolean; forceDownload?: boolean } = {}) {
   const zipPath = await resolveCompanyZip(options);
-  const csvBuffers = readCsvBuffersFromZip(zipPath);
-  if (!csvBuffers.length) throw new Error("公司 ZIP 中找不到 CSV/TXT 檔。");
-
-  const rows: NormalizedCompany[] = [];
-  for (const buffer of csvBuffers) {
-    for (const row of parseCsvBuffer(buffer)) {
-      const normalized = normalizeCompanyRow(row);
-      if (!normalized || !isTaoyuanAddress(normalized.address)) continue;
-      rows.push(normalized);
-    }
-  }
-
-  if (!rows.length) throw new Error("公司 ZIP 已解析，但沒有找到桃園公司資料；保留舊 cache。");
-
-  await replaceCompanyCache(rows);
-
-  return {
-    skipped: false,
-    imported: rows.length,
-    totalTaoyuan: await prisma.companyCache.count(),
-    lastImportedAt: new Date(),
-    zipPath
-  };
+  return importTaoyuanCompanies(zipPath);
 }
 
 export async function importLocalCompanyCache() {
@@ -82,7 +201,8 @@ export async function getRecentTaoyuanCompanies(days = 90) {
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   return prisma.companyCache.findMany({
     where: {
-      setupDate: { gte: since }
+      setupDate: { gte: since },
+      signalGeneratedAt: null
     },
     orderBy: [{ setupDate: "desc" }, { importedAt: "desc" }],
     take: Math.max(env.COMPANY_OPEN_DATA_LIMIT * 5, 1000)
@@ -123,7 +243,7 @@ async function downloadZip(endpoint: string, zipPath: string) {
     }
   }
 
-  throw new Error(`公司 ZIP 下載失敗：${errors.join("；")}`);
+  throw new Error(`Company ZIP download failed: ${errors.join("; ")}`);
 }
 
 async function downloadWithFetch(endpoint: string, zipPath: string) {
@@ -193,60 +313,85 @@ async function downloadWithHttpsStream(endpoint: string, zipPath: string) {
 
 async function assertValidZip(zipPath: string) {
   const info = await stat(zipPath).catch(() => null);
-  if (!info) throw new Error(`ZIP 不存在：${zipPath}`);
-  if (info.size < MIN_ZIP_BYTES) throw new Error(`ZIP 檔案過小：${info.size} bytes`);
+  if (!info) throw new Error(`ZIP not found: ${zipPath}`);
+  if (info.size < MIN_ZIP_BYTES) throw new Error(`ZIP too small: ${info.size} bytes`);
 
   const header = await readFile(zipPath, { encoding: null }).then((buffer) => buffer.subarray(0, 4));
-  if (!(header[0] === 0x50 && header[1] === 0x4b)) throw new Error("ZIP header 不正確。");
+  if (!(header[0] === 0x50 && header[1] === 0x4b)) throw new Error("Invalid ZIP header.");
 }
 
-function readCsvBuffersFromZip(zipPath: string) {
+function parseCompanyRowsFromZip(zipPath: string, meta: { zipHash: string; zipSize: number }) {
   const zip = new AdmZip(zipPath);
-  return zip
-    .getEntries()
-    .filter((entry) => !entry.isDirectory && /\.(csv|txt)$/i.test(entry.entryName))
-    .map((entry) => entry.getData());
+  const csvEntries = zip.getEntries().filter((entry) => !entry.isDirectory && /\.(csv|txt)$/i.test(entry.entryName));
+  if (!csvEntries.length) throw new Error("No CSV/TXT files found in company ZIP.");
+
+  const rows: NormalizedCompany[] = [];
+  const stats: ImportStats = {
+    zipHash: meta.zipHash,
+    zipSize: meta.zipSize,
+    csvColumns: [],
+    totalRows: 0,
+    totalTaoyuanRows: 0,
+    totalImported: 0,
+    excludeStats: {
+      notTaoyuan: 0,
+      noTaxId: 0,
+      noName: 0,
+      shortAddress: 0,
+      invalidSetupDate: 0
+    },
+    executionTime: 0
+  };
+
+  for (const entry of csvEntries) {
+    const parsed = parseCsvBuffer(entry.getData());
+    if (!stats.csvColumns.length) stats.csvColumns = parsed.headers;
+    for (const row of parsed.rows) {
+      stats.totalRows += 1;
+      const normalized = normalizeCompanyRow(row, stats);
+      if (!normalized) continue;
+      rows.push(normalized);
+      stats.totalTaoyuanRows += 1;
+    }
+  }
+
+  return { rows, stats };
 }
 
-type NormalizedCompany = {
-  taxId: string;
-  name: string;
-  address: string;
-  city?: string;
-  district?: string;
-  capitalAmount?: string;
-  setupDate?: Date;
-  organizationType?: string;
-  useInvoice?: string;
-  industryCode?: string;
-  industryName?: string;
-  source: string;
-  sourceUrl: string;
-  rawJson: string;
-};
-
-async function replaceCompanyCache(rows: NormalizedCompany[]) {
+async function replaceCompanyCache(rows: NormalizedCompany[], isBaselineImport: boolean) {
   const importedAt = new Date();
-  const uniqueRows = [...new Map(rows.map((row) => [row.taxId, row])).values()];
+  const signalGeneratedAt = isBaselineImport ? importedAt : undefined;
+  const uniqueRows = dedupeCompaniesByTaxId(rows);
   await prisma.companyCache.deleteMany({});
 
   for (let index = 0; index < uniqueRows.length; index += 1000) {
-    const batch = uniqueRows.slice(index, index + 1000).map((row) => ({ ...row, importedAt }));
+    const batch = dedupeCompaniesByTaxId(uniqueRows.slice(index, index + 1000)).map((row) => ({
+      ...row,
+      importedAt,
+      signalGeneratedAt
+    }));
     await prisma.companyCache.createMany({ data: batch });
   }
 }
 
-function parseCsvBuffer(buffer: Buffer): CompanyCsvRow[] {
+function dedupeCompaniesByTaxId(rows: NormalizedCompany[]) {
+  return [...new Map(rows.map((row) => [row.taxId, row])).values()];
+}
+
+function parseCsvBuffer(buffer: Buffer): { headers: string[]; rows: CompanyCsvRow[] } {
   const utf8 = buffer.toString("utf8");
   const text = looksLikeCompanyCsv(utf8) ? utf8 : new TextDecoder("big5").decode(buffer);
   const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim());
-  if (lines.length < 2) return [];
+  if (lines.length < 2) return { headers: [], rows: [] };
 
-  const headers = parseCsvLine(lines[0]).map((header) => header.trim());
-  return lines.slice(1).map((line) => {
-    const cells = parseCsvLine(line);
-    return Object.fromEntries(headers.map((header, index) => [header, cells[index]?.trim() ?? ""]));
-  });
+  const headers = parseCsvLine(lines[0]).map((header) => header.trim().replace(/^\uFEFF/, ""));
+  return {
+    headers,
+    rows: lines.slice(1).map((line) => {
+      const cells = parseCsvLine(line);
+      return Object.fromEntries(headers.map((header, index) => [header, cells[index]?.trim() ?? ""]));
+    })
+  };
 }
 
 function parseCsvLine(line: string) {
@@ -273,24 +418,45 @@ function parseCsvLine(line: string) {
   return cells;
 }
 
-function normalizeCompanyRow(row: CompanyCsvRow): NormalizedCompany | null {
-  const taxId = pick(row, ["統一編號", "營業人統編", "稅籍編號", "Business_Accounting_NO", "BAN"]);
-  const name = pick(row, ["營業人名稱", "公司名稱", "商業名稱", "Business_Name", "Company_Name"]);
-  const address = pick(row, ["營業地址", "公司所在地", "地址", "Business_Address", "Company_Location"]);
-  if (!taxId || !/^\d{8}$/.test(taxId) || !name || !address) return null;
+function normalizeCompanyRow(row: CompanyCsvRow, stats: ImportStats): NormalizedCompany | null {
+  const taxId = pick(row, COLUMN_ALIASES.taxId);
+  const name = pick(row, COLUMN_ALIASES.name);
+  const address = pick(row, COLUMN_ALIASES.address);
+
+  if (!taxId || !/^\d{8}$/.test(taxId)) {
+    stats.excludeStats.noTaxId += 1;
+    return null;
+  }
+  if (!name || name.length < 2) {
+    stats.excludeStats.noName += 1;
+    return null;
+  }
+  if (!address || address.length < 8) {
+    stats.excludeStats.shortAddress += 1;
+    return null;
+  }
+  if (!isTaoyuanAddress(address)) {
+    stats.excludeStats.notTaoyuan += 1;
+    return null;
+  }
+  const setupDate = parseTaiwanDate(pick(row, COLUMN_ALIASES.setupDate));
+  if (!setupDate) {
+    stats.excludeStats.invalidSetupDate += 1;
+    return null;
+  }
 
   return {
     taxId,
     name,
     address,
-    city: "桃園市",
+    city: ZH.taoyuanCity,
     district: inferDistrict(address),
-    capitalAmount: parseMoneyText(pick(row, ["資本額", "資本總額", "Capital_Stock_Amount", "Capital"])),
-    setupDate: parseTaiwanDate(pick(row, ["設立日期", "核准設立日期", "開業日期", "Company_Setup_Date", "Business_Setup_Date"])),
-    organizationType: pick(row, ["組織別名稱", "組織別", "組織種類", "Organization_Type", "Business_Type"]),
-    useInvoice: pick(row, ["使用統一發票", "是否使用統一發票", "Use_Invoice", "isUseInvoice"]),
-    industryCode: pick(row, ["行業代號", "行業代碼", "Industry_Code", "industryCd"]),
-    industryName: pick(row, ["名稱", "行業名稱", "營業項目", "Industry_Name", "industryNm"]),
+    capitalAmount: parseMoneyText(pick(row, COLUMN_ALIASES.capitalAmount)),
+    setupDate,
+    organizationType: pick(row, COLUMN_ALIASES.organizationType),
+    useInvoice: pick(row, COLUMN_ALIASES.useInvoice),
+    industryCode: pick(row, COLUMN_ALIASES.industryCode),
+    industryName: inferIndustryName(row),
     source: "fia_tax_zip",
     sourceUrl: env.COMPANY_OPEN_DATA_ENDPOINT,
     rawJson: JSON.stringify(row)
@@ -313,8 +479,14 @@ function pick(row: CompanyCsvRow, keys: string[]) {
   return undefined;
 }
 
+function inferIndustryName(row: CompanyCsvRow) {
+  const explicit = pick(row, COLUMN_ALIASES.industryName);
+  const businessName = pick(row, COLUMN_ALIASES.name);
+  return explicit && explicit !== businessName ? explicit : undefined;
+}
+
 function inferDistrict(address: string) {
-  return address.match(/桃園市([\u4e00-\u9fa5]{1,3}區)/)?.[1];
+  return DISTRICTS.find((district) => address.includes(district)) ?? "\u6843\u5712\u5176\u4ed6";
 }
 
 function parseMoneyText(value: string | undefined) {
@@ -324,17 +496,71 @@ function parseMoneyText(value: string | undefined) {
 }
 
 function parseTaiwanDate(value: string | undefined) {
-  if (!value) return undefined;
+  if (!value) return null;
   const clean = value.trim().replace(/[^\d]/g, "");
-  if (/^\d{7}$/.test(clean)) return new Date(Number(clean.slice(0, 3)) + 1911, Number(clean.slice(3, 5)) - 1, Number(clean.slice(5, 7)));
-  if (/^\d{8}$/.test(clean)) return new Date(Number(clean.slice(0, 4)), Number(clean.slice(4, 6)) - 1, Number(clean.slice(6, 8)));
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  if (clean.length < 5) return null;
+
+  let year: number;
+  let month: number;
+  let day: number;
+
+  if (/^\d{8}$/.test(clean)) {
+    year = Number(clean.slice(0, 4));
+    month = Number(clean.slice(4, 6));
+    day = Number(clean.slice(6, 8));
+  } else if (/^\d{6,7}$/.test(clean)) {
+    year = Number(clean.slice(0, -4)) + 1911;
+    month = Number(clean.slice(-4, -2));
+    day = Number(clean.slice(-2));
+  } else {
+    return null;
+  }
+
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
+  if (year < 1900 || year > new Date().getFullYear() + 1) return null;
+  if (month < 1 || month > 12) return null;
+  if (day < 1 || day > 31) return null;
+
+  const parsed = new Date(year, month - 1, day);
+  if (parsed.getFullYear() !== year || parsed.getMonth() !== month - 1 || parsed.getDate() !== day) return null;
+  return parsed;
 }
 
 function looksLikeCompanyCsv(text: string) {
-  const header = text.slice(0, 300);
-  return header.includes("營業地址") && header.includes("統一編號") && header.includes("營業人名稱");
+  const header = text.slice(0, 500);
+  return [ZH.businessAddress, ZH.taxId, ZH.businessName].some((keyword) => header.includes(keyword));
+}
+
+async function hashFileStream(filePath: string) {
+  return new Promise<string>((resolve, reject) => {
+    const hash = crypto.createHash("sha256");
+    const stream = createReadStream(filePath);
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("end", () => resolve(hash.digest("hex")));
+    stream.on("error", reject);
+  });
+}
+
+function writeImportReport(stats: ImportStats) {
+  const report = `# Yunhe Company Import Report
+
+- Run at: ${new Date().toISOString()}
+- ZIP SHA256: ${stats.zipHash}
+- ZIP size: ${(stats.zipSize / 1024 / 1024).toFixed(2)} MB
+- CSV columns: ${stats.csvColumns.join(", ")}
+- CSV rows parsed: ${stats.totalRows}
+- Taoyuan rows: ${stats.totalTaoyuanRows}
+- CompanyCache rows written: ${stats.totalImported}
+- Excluded non-Taoyuan: ${stats.excludeStats.notTaoyuan}
+- Excluded missing taxId: ${stats.excludeStats.noTaxId}
+- Excluded missing name: ${stats.excludeStats.noName}
+- Excluded short address: ${stats.excludeStats.shortAddress}
+- Excluded invalid setup date: ${stats.excludeStats.invalidSetupDate}
+- Execution seconds: ${(stats.executionTime / 1000).toFixed(2)}
+
+Note: this report is generated only from the real tax ZIP import. No mock leads are created.
+`;
+  return writeFile(path.join(process.cwd(), "IMPORT_REPORT.md"), report, "utf8");
 }
 
 async function fileExists(filePath: string) {

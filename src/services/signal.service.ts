@@ -1,4 +1,5 @@
 import { CompanySignalAdapter } from "../adapters/companySignal.adapter";
+import { ContractMaturityAdapter } from "../adapters/contractMaturity.adapter";
 import { SearchSignalAdapter, competitorSignalQueries, contractSignalQueries, hiringSignalQueries, moveSignalQueries } from "../adapters/searchSignal.adapter";
 import { SignalAdapter, SignalInput } from "../adapters/signal.types";
 import { TenderSignalAdapter } from "../adapters/tenderSignal.adapter";
@@ -13,7 +14,8 @@ const signalAdapters: SignalAdapter[] = [
   new SearchSignalAdapter("hiring", "public_hiring_search", hiringSignalQueries),
   new SearchSignalAdapter("move", "public_move_search", moveSignalQueries),
   new SearchSignalAdapter("competitor", "public_competitor_search", competitorSignalQueries),
-  new SearchSignalAdapter("contract", "public_contract_search", contractSignalQueries)
+  new SearchSignalAdapter("contract", "public_contract_search", contractSignalQueries),
+  new ContractMaturityAdapter()
 ];
 
 let signalScanInProgress = false;
@@ -69,6 +71,7 @@ async function scanSignalAdapter(adapter: SignalAdapter) {
           rawJson: input.rawJson ? JSON.stringify(input.rawJson) : undefined,
           rawScore: scoring.rawScore,
           score: scoring.score,
+          priorityScore: priorityScoreFor(input),
           grade: scoring.grade,
           matchedKeywords: JSON.stringify(scoring.matchedKeywords),
           reason: scoring.reason,
@@ -77,6 +80,7 @@ async function scanSignalAdapter(adapter: SignalAdapter) {
           fetchedAt: input.fetchedAt ?? new Date()
         }
       });
+      await markCompanySignalGenerated(input);
       createdLeadCount += 1;
     }
 
@@ -95,6 +99,23 @@ async function scanSignalAdapter(adapter: SignalAdapter) {
     await markAdapterFailed(source, message);
     return { source, fetched: 0, createdLeadCount: 0, error: message };
   }
+}
+
+function priorityScoreFor(input: SignalInput) {
+  if (!input.rawJson || typeof input.rawJson !== "object") return 0;
+  const value = (input.rawJson as { priorityScore?: unknown; scoring?: { priorityScore?: unknown } }).priorityScore ?? (input.rawJson as { scoring?: { priorityScore?: unknown } }).scoring?.priorityScore;
+  return typeof value === "number" && Number.isFinite(value) ? Math.round(value) : 0;
+}
+
+async function markCompanySignalGenerated(input: SignalInput) {
+  if (input.type !== "company" || !input.rawJson || typeof input.rawJson !== "object") return;
+  const taxId = (input.rawJson as { taxId?: unknown }).taxId;
+  if (typeof taxId !== "string" || !/^\d{8}$/.test(taxId)) return;
+
+  await prisma.companyCache.updateMany({
+    where: { taxId },
+    data: { signalGeneratedAt: new Date() }
+  });
 }
 
 function isValidSignal(input: SignalInput) {

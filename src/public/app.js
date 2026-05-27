@@ -47,7 +47,7 @@ async function refreshAll() {
 }
 
 async function loadStats() {
-  document.querySelectorAll(".top-contract-strip").forEach((element) => element.remove());
+  document.querySelectorAll(".top-contract-panel").forEach((element) => element.remove());
   const stats = await fetchJson("/api/stats/today");
   const tender = stats.tender || {};
   const center = stats.signalCenter || {};
@@ -55,15 +55,16 @@ async function loadStats() {
   const topContract = center.topContractMaturity || [];
 
   $("#todayStats").innerHTML = [
-    stat(center.todayCompanySignals || 0, "\u4eca\u65e5\u65b0\u6210\u7acb\u516c\u53f8", "\u5bb6"),
-    stat(center.todaySGradeCount || 0, "\u4eca\u65e5 S \u7d1a\u8a0a\u865f", "\u7b46", "hot"),
-    stat(tender.newTenderCount || 0, "\u4eca\u65e5\u6a19\u6848", "\u4ef6"),
-    stat(center.monthContractMaturityCount || 0, "\u672c\u6708\u53ef\u80fd\u63db\u7d04\u516c\u53f8", "\u5bb6", "hot"),
-    stat(tender.closingSoonCount || 0, "\u5373\u5c07\u622a\u6b62\u6a19\u6848", "\u4ef6"),
+    stat(center.todayCompanySignals || 0, "\u4eca\u65e5\u65b0\u6210\u7acb\u516c\u53f8", "\u5bb6", "clickable", `data-stat-filter="company"`),
+    stat(center.todaySGradeCount || 0, "\u4eca\u65e5 S \u7d1a\u8a0a\u865f", "\u7b46", "hot clickable", `data-stat-filter="s-grade"`),
+    stat(tender.newTenderCount || 0, "\u4eca\u65e5\u6a19\u6848", "\u4ef6", "clickable", `data-stat-filter="tender"`),
+    stat(center.monthContractMaturityCount || 0, "\u672c\u6708\u53ef\u80fd\u63db\u7d04\u516c\u53f8", "\u5bb6", "hot clickable", `data-stat-filter="contract-maturity"`),
+    stat(tender.closingSoonCount || 0, "\u5373\u5c07\u622a\u6b62\u6a19\u6848", "\u4ef6", "clickable", `data-stat-filter="tender"`),
     stat(company.latestSetupDate ? formatDateOnly(company.latestSetupDate) : 0, "\u6700\u8fd1\u6210\u7acb\u65e5\u671f"),
     stat(formatCounts(company.regionCounts), "\u5730\u5340\u5206\u5e03"),
     stat(formatCounts(company.highValueIndustries), "\u5e38\u898b\u884c\u696d")
   ].join("");
+  bindStatFilters();
 
   if (topContract.length) {
     $("#todayStats").insertAdjacentHTML(
@@ -77,6 +78,34 @@ async function loadStats() {
       </section>`
     );
   }
+}
+
+function bindStatFilters() {
+  document.querySelectorAll("[data-stat-filter]").forEach((card) => {
+    card.addEventListener("click", async () => {
+      const filter = card.dataset.statFilter;
+      if (filter === "company") {
+        filters.companyDays.value = "90";
+        filters.companyGrade.value = "";
+        document.querySelector("#companyList")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      if (filter === "s-grade") {
+        filters.signalType.value = "";
+        filters.signalGrade.value = "S";
+        document.querySelector("#signalList")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      if (filter === "contract-maturity") {
+        filters.signalType.value = "contract_maturity";
+        filters.signalGrade.value = "";
+        document.querySelector("#signalList")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      if (filter === "tender") {
+        filters.tenderGrade.value = "";
+        document.querySelector("#tenderList")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      await Promise.all([loadCompanies(), loadSignals(), loadTenders()]);
+    });
+  });
 }
 
 async function loadCompanies() {
@@ -275,10 +304,10 @@ function renderContactResult(result) {
   return `<div class="contact-box"><div class="phone-list">${phones}</div><small>${escapeHtml(result.note || "")}</small><div class="contact-sources">${sources}</div></div>`;
 }
 
-function stat(value, label, suffix = "", className = "") {
+function stat(value, label, suffix = "", className = "", attrs = "") {
   const emptyValue = value === 0 || value === "0" || value === "" || value == null;
   const compact = String(value ?? "").length > 12 ? "compact-value" : "";
-  return `<div class="stat-card ${className}"><span>${escapeHtml(label)}</span><b class="${emptyValue ? "muted-value" : ""} ${compact}">${emptyValue ? "-" : escapeHtml(value)}${!emptyValue && suffix ? `<small>${escapeHtml(suffix)}</small>` : ""}</b></div>`;
+  return `<div class="stat-card ${className}" ${attrs}><span>${escapeHtml(label)}</span><b class="${emptyValue ? "muted-value" : ""} ${compact}">${emptyValue ? "-" : escapeHtml(value)}${!emptyValue && suffix ? `<small>${escapeHtml(suffix)}</small>` : ""}</b></div>`;
 }
 
 async function fetchJson(url) {

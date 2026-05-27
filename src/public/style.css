@@ -165,6 +165,17 @@ input {
   background: #fffaeb;
 }
 
+.stat-card.clickable {
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.stat-card.clickable:hover {
+  transform: translateY(-1px);
+  border-color: #84caff;
+  box-shadow: 0 8px 18px rgb(16 24 40 / 0.08);
+}
+
 .top-contract-panel {
   margin: -4px 0 24px;
 }

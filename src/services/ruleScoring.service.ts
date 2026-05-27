@@ -1,10 +1,13 @@
 import { Keyword } from "@prisma/client";
-import { generateReply } from "./replyTemplate.service";
+import { generateReply, hasOfficeEquipmentSignal } from "./replyTemplate.service";
+
+export type PostCategory = "office_equipment_need" | "general_business" | "hiring" | "outsourcing" | "unrelated";
 
 export type RuleScoreResult = {
   rawScore: number;
   score: number;
   grade: "S" | "A" | "B" | "C";
+  category: PostCategory;
   signalTypes: string[];
   urgency: number;
   isRelevant: boolean;
@@ -21,6 +24,11 @@ export type RuleScoreResult = {
   recommendedAction: string;
 };
 
+const productWords = ["影印機", "事務機", "複合機", "印表機", "雷射印表機", "掃描器", "列印", "掃描", "OA"];
+const rentalWords = ["租影印機", "影印機租賃", "事務機租賃", "印表機租賃", "租約到期", "合約快到", "想換廠商", "換租賃商"];
+const hiringWords = ["徵人", "徵才", "職缺", "薪資", "面試", "小編", "行政助理", "外包人員"];
+const outsourcingWords = ["外包", "接案", "短影音", "社群小編", "剪輯", "設計外包"];
+
 function toLeadScore(rawScore: number) {
   if (rawScore <= 1) return 1;
   if (rawScore <= 4) return 2;
@@ -30,17 +38,12 @@ function toLeadScore(rawScore: number) {
 }
 
 function inferCustomerType(content: string) {
-  if (content.includes("學生")) return "學生";
-  if (content.includes("家用") || content.includes("家裡") || content.includes("個人用")) return "家用";
-  if (content.includes("總務")) return "總務";
-  if (content.includes("行政")) return "公司行政";
-  if (content.includes("老闆")) return "老闆";
-  if (content.includes("診所")) return "診所";
-  if (content.includes("牙醫")) return "牙醫";
-  if (content.includes("補習班")) return "補習班";
-  if (content.includes("事務所")) return "專業事務所";
-  if (content.includes("門市")) return "門市";
-  if (content.includes("公司") || content.includes("辦公室")) return "公司";
+  if (hasAny(content, ["診所", "牙醫", "醫美", "藥局"])) return "醫療/診所";
+  if (hasAny(content, ["補習班", "安親班", "幼兒園", "托嬰"])) return "教育機構";
+  if (hasAny(content, ["會計師", "律師", "地政士", "記帳士", "事務所"])) return "專業事務所";
+  if (hasAny(content, ["公司", "辦公室", "總務", "行政", "採購"])) return "公司行政/總務";
+  if (hasAny(content, ["學生", "作業", "報告"])) return "學生";
+  if (hasAny(content, ["家用", "家裡", "個人用"])) return "家用";
   return "未知";
 }
 
@@ -54,7 +57,21 @@ function recencyBonus(publishedAt: Date | null | undefined) {
   return { bonus: -5, label: "超過 90 天" };
 }
 
+export function classifyPost(content: string): PostCategory {
+  const hasProductOrRental = hasOfficeEquipmentSignal(content) || hasAny(content, rentalWords);
+  if (hasProductOrRental) return "office_equipment_need";
+  if (hasAny(content, outsourcingWords)) return "outsourcing";
+  if (hasAny(content, hiringWords)) return "hiring";
+  if (hasAny(content, ["公司", "辦公室", "創業", "開店", "新辦公室"])) return "general_business";
+  return "unrelated";
+}
+
 export function scorePost(content: string, publishedAt: Date | null | undefined, keywords: Keyword[]): RuleScoreResult {
+  const category = classifyPost(content);
+  if (category !== "office_equipment_need") {
+    return nonOfficeResult(content, category);
+  }
+
   const matched = keywords.filter((keyword) => content.includes(keyword.value));
   const matchedKeywords = [...new Set(matched.map((keyword) => keyword.value))];
   const matchedGroups = [...new Set(matched.map((keyword) => keyword.group))];
@@ -71,11 +88,11 @@ export function scorePost(content: string, publishedAt: Date | null | undefined,
   if (hasGroup("switch_signal") && hasGroup("high_value_industry")) rawScore += 4;
   if (hasGroup("new_business_signal") && hasGroup("product_core")) rawScore += 3;
 
-  if (content.includes("學生") || content.includes("作業") || content.includes("報告")) rawScore -= 5;
-  if (content.includes("家用") || content.includes("個人用") || content.includes("家裡")) rawScore -= 5;
-  if (content.includes("DIY") || content.includes("自己修")) rawScore -= 4;
-  if (content.includes("超商列印") || content.includes("影印店")) rawScore -= 5;
-  if (content.includes("二手") || content.includes("便宜印表機")) rawScore -= 3;
+  if (hasAny(content, ["學生", "作業", "報告"])) rawScore -= 5;
+  if (hasAny(content, ["家用", "個人用", "家裡", "宿舍"])) rawScore -= 5;
+  if (hasAny(content, ["DIY", "自己修"])) rawScore -= 4;
+  if (hasAny(content, ["超商列印", "7-11列印", "全家列印", "影印店"])) rawScore -= 5;
+  if (hasAny(content, ["二手", "便宜印表機"])) rawScore -= 3;
 
   const signalTypes = inferSignalTypes(matchedGroups);
   const score = toLeadScore(rawScore);
@@ -93,17 +110,19 @@ export function scorePost(content: string, publishedAt: Date | null | undefined,
   const shouldAct = grade === "S" || grade === "A" || (grade === "B" && !isLowValue);
 
   const reasonParts = [
-    matchedKeywords.length ? `命中 ${matchedKeywords.join("、")}` : "未命中主要需求訊號",
-    signalTypes.length ? `訊號：${signalTypes.join("、")}` : "訊號不明",
+    "分類：office_equipment_need",
+    matchedKeywords.length ? `命中關鍵字：${matchedKeywords.join("、")}` : "未命中明確關鍵字",
+    signalTypes.length ? `訊號類型：${signalTypes.join("、")}` : "訊號類型不明確",
     `時間：${recency.label}`,
-    isLowValue ? "含低價值/非商用訊號" : "未見明顯低價值訊號",
-    isBusinessNeed ? "像商業需求" : "商務需求不明"
+    isLowValue ? "含低價值訊號" : "未命中明顯低價值排除詞",
+    isBusinessNeed ? "具商業需求線索" : "商業需求較弱"
   ];
 
   return {
     rawScore,
     score,
     grade,
+    category,
     signalTypes,
     urgency,
     isRelevant: score >= 2,
@@ -117,14 +136,37 @@ export function scorePost(content: string, publishedAt: Date | null | undefined,
     reason: reasonParts.join("；"),
     summary: content.length > 180 ? `${content.slice(0, 180)}...` : content,
     suggestedReply: generateReply(matchedKeywords, content),
-    recommendedAction: shouldAct ? "人工回覆" : score >= 2 ? "觀察" : "忽略"
+    recommendedAction: shouldAct ? "人工查看原文並評估是否自然回覆" : score >= 2 ? "觀察" : "忽略"
+  };
+}
+
+function nonOfficeResult(content: string, category: PostCategory): RuleScoreResult {
+  return {
+    rawScore: 0,
+    score: 1,
+    grade: "C",
+    category,
+    signalTypes: [],
+    urgency: 1,
+    isRelevant: false,
+    isBusinessNeed: false,
+    isComplaint: false,
+    hasBuyingIntent: false,
+    isLowValue: true,
+    customerType: inferCustomerType(content),
+    matchedKeywords: [],
+    matchedGroups: [],
+    reason: `分類：${category}；未命中 OA/影印機/印表機/掃描/租賃等必要產品或租賃詞，不建立商機。`,
+    summary: content.length > 180 ? `${content.slice(0, 180)}...` : content,
+    suggestedReply: "",
+    recommendedAction: "忽略"
   };
 }
 
 function inferSignalTypes(groups: string[]) {
   const signals: string[] = [];
   if (groups.includes("pain_signal")) signals.push("痛點");
-  if (groups.includes("switch_signal")) signals.push("更換");
+  if (groups.includes("switch_signal")) signals.push("更換/租賃");
   if (groups.includes("growth_signal")) signals.push("成長");
   if (groups.includes("new_business_signal")) signals.push("新商家");
   return signals;
@@ -139,4 +181,8 @@ function inferGrade(score: number, groups: string[], isBusinessNeed: boolean): "
   }
   if (score >= 3) return "B";
   return "C";
+}
+
+function hasAny(text: string, words: string[]) {
+  return words.some((word) => text.includes(word));
 }

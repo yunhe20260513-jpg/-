@@ -1,7 +1,7 @@
 import { TenderAdapter } from "../adapters/tender.adapter";
 import { prisma } from "../prisma/client";
 import { scoreTender, TenderInput } from "./tenderScoring.service";
-import { markAdapterFailed, markAdapterRunning, markAdapterSuccess } from "./adapterStatus.service";
+import { markAdapterFailed, markAdapterNoResult, markAdapterRunning, markAdapterSuccess } from "./adapterStatus.service";
 import { logger } from "../utils/logger";
 
 let tenderScanInProgress = false;
@@ -41,7 +41,7 @@ export async function scanTenders() {
           tenderMethod: tender.tenderMethod,
           procurementType: tender.procurementType,
           url: tender.url,
-          rawJson: tender.rawJson ? JSON.stringify(tender.rawJson) : undefined,
+          rawJson: JSON.stringify({ ...(typeof tender.rawJson === "object" && tender.rawJson ? tender.rawJson : {}), intentType: score.intentType }),
           rawScore: score.rawScore,
           score: score.score,
           grade: score.grade,
@@ -53,11 +53,18 @@ export async function scanTenders() {
       createdLeadCount += 1;
     }
 
+    const finalStatus = createdLeadCount > 0 ? "success" : "no_result";
+    const noResultMessage = createdLeadCount > 0 ? undefined : "標案 API 可用，但沒有建立符合 OA 直接需求或前置需求的標案。";
+
     await prisma.scanLog.update({
       where: { id: scanLog.id },
-      data: { status: "success", fetchedCount: tenders.length, createdLeadCount, finishedAt: new Date() }
+      data: { status: finalStatus, fetchedCount: tenders.length, createdLeadCount, finishedAt: new Date(), errorMessage: noResultMessage }
     });
-    await markAdapterSuccess(source);
+    if (createdLeadCount > 0) {
+      await markAdapterSuccess(source);
+    } else {
+      await markAdapterNoResult(source, noResultMessage);
+    }
     return { source, fetched: tenders.length, createdLeadCount };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

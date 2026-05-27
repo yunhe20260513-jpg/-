@@ -15,8 +15,7 @@ export class TenderAdapter {
     for (const keyword of tenderKeywords) {
       const result = await fetchKeyword(keyword);
       if (result.reachable) this.reachable = true;
-      const rows = result.rows;
-      for (const row of rows) {
+      for (const row of result.rows) {
         const tender = normalizeTender(row, keyword);
         if (!tender) continue;
         tenders.set(tender.jobNumber, tender);
@@ -26,9 +25,6 @@ export class TenderAdapter {
     if (!this.reachable) {
       throw new Error("pcc.g0v.ronny.tw API unavailable or returned no parseable JSON");
     }
-    if (!tenders.size) {
-      throw new Error("pcc.g0v.ronny.tw API reachable but returned no office-equipment tender rows; not showing fake success");
-    }
 
     return [...tenders.values()];
   }
@@ -37,6 +33,7 @@ export class TenderAdapter {
 async function fetchKeyword(keyword: string): Promise<{ reachable: boolean; rows: AnyRecord[] }> {
   const urls = buildCandidateUrls(keyword);
   let reachable = false;
+
   for (const url of urls) {
     const response = await fetch(url, {
       headers: {
@@ -71,7 +68,7 @@ function buildCandidateUrls(keyword: string) {
 function normalizeTender(row: AnyRecord, keyword: string): TenderInput | null {
   const tenderName = pickString(row, ["標案名稱", "tenderName", "name", "subject", "title", "標的名稱"]);
   const jobNumber = pickString(row, ["標案編號", "jobNumber", "job_number", "案號", "tenderId", "unit_id"]);
-  const url = normalizeUrl(pickString(row, ["url", "標案URL", "detailUrl", "detail_url", "link", "招標公告URL"]), jobNumber);
+  const url = normalizeUrl(pickString(row, ["url", "標案URL", "detailUrl", "detail_url", "link", "公告URL"]), jobNumber);
 
   if (!tenderName || !jobNumber || !url) return null;
 

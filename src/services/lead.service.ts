@@ -75,6 +75,7 @@ function isRealLeadPost(post: SourcePost) {
 }
 
 function shouldCreateLead(result: RuleScoreResult) {
+  if (result.category !== "office_equipment_need") return false;
   if (result.score < 3) return false;
   if (result.isLowValue) return false;
   if (result.grade === "C") return false;
@@ -92,7 +93,7 @@ function getVerificationStatus(rawJson: string | null) {
 }
 
 function withSourceReason(reason: string, verificationStatus: string) {
-  if (verificationStatus === "verified") return `已抓取原頁內容；${reason}`;
-  if (verificationStatus === "unverified") return `搜尋結果 URL 真實，但原頁未能抓取；${reason}`;
+  if (verificationStatus === "verified") return `原文頁面已驗證：${reason}`;
+  if (verificationStatus === "unverified") return `搜尋結果 URL 為真實連結，但原文頁不可抓取：${reason}`;
   return reason;
 }

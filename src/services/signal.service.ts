@@ -4,7 +4,7 @@ import { SearchSignalAdapter, competitorSignalQueries, contractSignalQueries, hi
 import { SignalAdapter, SignalInput } from "../adapters/signal.types";
 import { TenderSignalAdapter } from "../adapters/tenderSignal.adapter";
 import { prisma } from "../prisma/client";
-import { markAdapterFailed, markAdapterRunning, markAdapterSuccess } from "./adapterStatus.service";
+import { markAdapterFailed, markAdapterNoResult, markAdapterRunning, markAdapterSuccess } from "./adapterStatus.service";
 import { isBlacklisted } from "./blacklist.service";
 import { scoreSignal } from "./signalScoring.service";
 
@@ -84,11 +84,18 @@ async function scanSignalAdapter(adapter: SignalAdapter) {
       createdLeadCount += 1;
     }
 
+    const finalStatus = createdLeadCount > 0 ? "success" : "no_result";
+    const noResultMessage = createdLeadCount > 0 ? undefined : "掃描成功，但沒有建立符合分數門檻的新 Signal。";
+
     await prisma.scanLog.update({
       where: { id: scanLog.id },
-      data: { status: "success", fetchedCount: inputs.length, createdLeadCount, finishedAt: new Date() }
+      data: { status: finalStatus, fetchedCount: inputs.length, createdLeadCount, finishedAt: new Date(), errorMessage: noResultMessage }
     });
-    await markAdapterSuccess(source);
+    if (createdLeadCount > 0) {
+      await markAdapterSuccess(source);
+    } else {
+      await markAdapterNoResult(source, noResultMessage);
+    }
     return { source, fetched: inputs.length, createdLeadCount };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -11,9 +11,9 @@ export class ContractMaturityAdapter implements SignalAdapter {
   async fetchLatest(): Promise<SignalInput[]> {
     const now = new Date();
     const oldest = new Date(now);
-    oldest.setMonth(oldest.getMonth() - 48);
+    oldest.setMonth(oldest.getMonth() - 72);
     const newest = new Date(now);
-    newest.setMonth(newest.getMonth() - 30);
+    newest.setMonth(newest.getMonth() - 24);
 
     const companies = await prisma.companyCache.findMany({
       where: {
@@ -21,12 +21,16 @@ export class ContractMaturityAdapter implements SignalAdapter {
         OR: [
           { address: { contains: "桃園" } },
           { address: { contains: "中壢" } },
+          { address: { contains: "平鎮" } },
+          { address: { contains: "八德" } },
+          { address: { contains: "蘆竹" } },
+          { address: { contains: "龜山" } },
           { address: { contains: "青埔" } },
           { address: { contains: "南崁" } }
         ]
       },
       orderBy: [{ setupDate: "desc" }],
-      take: 1500
+      take: 2000
     });
 
     const signals: SignalInput[] = [];
@@ -44,7 +48,7 @@ export class ContractMaturityAdapter implements SignalAdapter {
       if (existing) continue;
 
       const scoring = await scoreContractMaturity(company);
-      if (!scoring || scoring.score < 3) continue;
+      if (!scoring || scoring.rawScore < 7) continue;
 
       const url = `https://findbiz.nat.gov.tw/fts/query/QuerySimpleList/QuerySimpleList.xhtml?queryText=${encodeURIComponent(company.taxId)}`;
       const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(company.address)}`;
@@ -56,7 +60,7 @@ export class ContractMaturityAdapter implements SignalAdapter {
         name: company.name,
         url,
         summary: [
-          `成立時間：${company.setupDate?.toISOString().slice(0, 10)}`,
+          `設立日期：${company.setupDate?.toISOString().slice(0, 10)}`,
           `推測合約年齡：約 ${scoring.ageMonths} 個月`,
           company.industryName ? `行業：${company.industryName}` : "",
           company.district ? `行政區：${company.district}` : "",
@@ -84,10 +88,6 @@ export class ContractMaturityAdapter implements SignalAdapter {
           scoring
         }
       });
-    }
-
-    if (!signals.length) {
-      throw new Error("No Taoyuan contract maturity signals matched the 30-48 month and high-document-industry rules.");
     }
 
     return signals.sort((a, b) => {

@@ -22,7 +22,8 @@ export const defaultKeywords: DefaultKeyword[] = [
     "辦公室設備",
     "OA設備",
     "事務設備",
-    "列印設備"
+    "列印設備",
+    "掃描設備"
   ]),
   ...group("pain_signal", 2, [
     "卡紙",
@@ -41,7 +42,8 @@ export const defaultKeywords: DefaultKeyword[] = [
     "廠商不處理",
     "一直壞",
     "又壞了",
-    "機器老舊"
+    "機器老舊",
+    "維修太慢"
   ]),
   ...group("switch_signal", 4, [
     "租影印機",
@@ -58,7 +60,9 @@ export const defaultKeywords: DefaultKeyword[] = [
     "報價",
     "月租",
     "保養合約",
-    "維修廠商"
+    "維修廠商",
+    "影印機租賃推薦",
+    "事務機租賃推薦"
   ]),
   ...group("growth_signal", 3, [
     "搬辦公室",
@@ -80,10 +84,8 @@ export const defaultKeywords: DefaultKeyword[] = [
     "新事務所",
     "新工作室",
     "新門市",
-    "新開幕",
-    "準備開店",
-    "店面裝潢",
-    "新據點"
+    "新辦公室",
+    "新店面"
   ]),
   ...group("business_context", 2, [
     "公司",
@@ -145,6 +147,7 @@ export const defaultKeywords: DefaultKeyword[] = [
     "自己修",
     "超商列印",
     "7-11列印",
-    "全家列印"
+    "全家列印",
+    "影印店"
   ])
 ];

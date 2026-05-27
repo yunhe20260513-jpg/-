@@ -19,6 +19,15 @@ export async function markAdapterSuccess(source: string) {
   });
 }
 
+export async function markAdapterNoResult(source: string, message = "掃描成功，但沒有找到符合條件的有效資料。") {
+  const now = new Date();
+  return prisma.adapterStatus.upsert({
+    where: { source },
+    update: { status: "no_result", lastSuccessAt: now, errorMessage: message },
+    create: { source, status: "no_result", lastRunAt: now, lastSuccessAt: now, errorMessage: message }
+  });
+}
+
 export async function markAdapterFailed(source: string, errorMessage: string) {
   return prisma.adapterStatus.upsert({
     where: { source },
@@ -36,7 +45,7 @@ export async function markStaleRunningAdapters() {
     },
     data: {
       status: "stale",
-      errorMessage: "掃描程序超過 15 分鐘未完成，可能是 server 重啟、程序中斷或外部來源卡住；未建立假資料。"
+      errorMessage: "掃描程序超過 15 分鐘未完成，已標示為逾時；未建立假資料。"
     }
   });
 
@@ -49,7 +58,7 @@ export async function markStaleRunningAdapters() {
     data: {
       status: "stale",
       finishedAt: new Date(),
-      errorMessage: "掃描程序超過 15 分鐘未完成，已標示為 stale。"
+      errorMessage: "掃描程序超過 15 分鐘未完成，已標示為逾時。"
     }
   });
 }

@@ -6,7 +6,6 @@ const HIGH_DOCUMENT_KEYWORDS = [
   "補習班",
   "安親班",
   "房仲",
-  "不動產",
   "保險",
   "會計師",
   "律師",
@@ -36,49 +35,67 @@ type CompanyForMaturity = {
 export async function scoreContractMaturity(company: CompanyForMaturity) {
   if (!company.setupDate) return null;
   const ageMonths = companyAgeMonths(company.setupDate);
-  if (ageMonths < 30 || ageMonths > 48) return null;
 
   const text = [company.name, company.industryName, company.address, company.rawJson].filter(Boolean).join(" ");
   const matchedKeywords = HIGH_DOCUMENT_KEYWORDS.filter((keyword) => text.includes(keyword));
-  if (!matchedKeywords.length) return null;
 
-  let priorityScore = 50;
-  const reasons = [`公司成立約 ${formatAge(ageMonths)}，可能進入第一輪 OA/影印機租賃換約期。`];
+  let rawScore = 0;
+  const reasons: string[] = [`公司成立約 ${formatAge(ageMonths)}，可能進入 OA/影印機租賃換約觀察期。`];
+
+  if (ageMonths >= 30 && ageMonths <= 48) {
+    rawScore += 5;
+    reasons.push("成立時間落在 30-48 個月，高機率接近三年租約週期。");
+  } else if (ageMonths >= 24 && ageMonths <= 60) {
+    rawScore += 3;
+    reasons.push("成立時間落在 24-60 個月，可列入換約觀察。");
+  } else if (ageMonths >= 60 && ageMonths <= 72) {
+    rawScore += 2;
+    reasons.push("成立時間落在 60-72 個月，可能進入第二輪換約或設備汰換期。");
+  } else {
+    return null;
+  }
 
   if (ageMonths >= 30 && ageMonths <= 42) {
-    priorityScore += 5;
-    reasons.push("成立時間落在 36 個月正負 6 個月的高機率換約帶。");
+    rawScore += 2;
+    reasons.push("接近 36 個月核心換約區間。");
+  }
+
+  if (matchedKeywords.length) {
+    rawScore += 5;
+    reasons.push(`命中高文件需求產業：${matchedKeywords.join("、")}。`);
   }
 
   if (String(company.useInvoice ?? "").includes("Y") || String(company.useInvoice ?? "").includes("是")) {
-    priorityScore += 2;
-    reasons.push("使用統一發票，較可能有正式營運與文件需求。");
+    rawScore += 1;
+    reasons.push("有使用統一發票。");
   }
 
   if (Number(company.capitalAmount ?? 0) > 1_000_000) {
-    priorityScore += 2;
+    rawScore += 2;
     reasons.push("資本額超過 100 萬。");
   }
 
   if (PRIORITY_DISTRICTS.some((keyword) => company.address.includes(keyword))) {
-    priorityScore += 2;
-    reasons.push("位於桃園優先開發區域。");
+    rawScore += 2;
+    reasons.push("位於桃園核心服務區。");
   }
 
   const corroborating = await findCorroboratingSignals(company);
   if (corroborating.length) {
-    priorityScore += 10;
-    reasons.push(`同時存在其他需求訊號：${corroborating.join("、")}。`);
+    rawScore += 10;
+    reasons.push(`同時存在關聯訊號：${corroborating.join("、")}。`);
   }
 
-  const grade = priorityScore >= 65 ? "S" : priorityScore >= 58 ? "A" : "B";
+  if (rawScore < 7) return null;
+
+  const grade = rawScore >= 11 ? "S" : rawScore >= 8 ? "A" : "B";
   const score = grade === "S" ? 5 : grade === "A" ? 4 : 3;
 
   return {
-    rawScore: priorityScore,
+    rawScore,
     score,
     grade,
-    priorityScore,
+    priorityScore: rawScore,
     ageMonths,
     matchedKeywords,
     corroboratingSignals: corroborating,
@@ -120,7 +137,7 @@ function labelCorroboratingType(type: string) {
   if (type === "competitor") return "競品抱怨";
   if (type === "move") return "搬遷/擴編";
   if (type === "hiring") return "徵才";
-  if (type === "social") return "設備問題";
+  if (type === "social") return "辦公設備問題";
   if (type === "contract") return "租約到期";
   return type;
 }
@@ -129,10 +146,10 @@ function suggestedActionFor(text: string) {
   if (text.includes("診所") || text.includes("牙醫")) {
     return "可詢問目前事務機是否即將到期，主打維修速度與掃描穩定性。";
   }
-  if (text.includes("補習班") || text.includes("安親班")) {
+  if (text.includes("補習") || text.includes("安親")) {
     return "可主打大量列印與月租方案，詢問是否有舊機換約需求。";
   }
-  if (text.includes("房仲") || text.includes("不動產")) {
+  if (text.includes("房仲") || text.includes("保險")) {
     return "可詢問目前合約是否即將到期，強調快速維修與低停機時間。";
   }
   return "可先確認目前設備品牌與租約狀態，再評估是否有換約需求。";

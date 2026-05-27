@@ -8,7 +8,7 @@ import { createPost, findDuplicate } from "./dedupe.service";
 import { analyzeAndCreateLead } from "./lead.service";
 import { ensureKeywordSeeded } from "./keyword.service";
 import { isBlacklisted } from "./blacklist.service";
-import { markAdapterFailed, markAdapterRunning, markAdapterSuccess } from "./adapterStatus.service";
+import { markAdapterFailed, markAdapterNoResult, markAdapterRunning, markAdapterSuccess } from "./adapterStatus.service";
 import { verifyPublicPage } from "./pageVerifier.service";
 import { RateLimiter } from "../utils/rateLimit";
 import { logger } from "../utils/logger";
@@ -47,16 +47,25 @@ async function scanAdapter(adapter: PlatformAdapter, db: PrismaClient = prisma) 
       if (lead) createdLeadCount += 1;
     }
 
+    const finalStatus = createdLeadCount > 0 ? "success" : "no_result";
+    const noResultMessage =
+      createdLeadCount > 0 ? undefined : "掃描成功，但沒有符合 OA 產品/租賃條件的有效商機。";
+
     await db.scanLog.update({
       where: { id: scanLog.id },
       data: {
-        status: "success",
+        status: finalStatus,
         fetchedCount: inputs.length,
         createdLeadCount,
-        finishedAt: new Date()
+        finishedAt: new Date(),
+        errorMessage: noResultMessage
       }
     });
-    await markAdapterSuccess(adapter.source);
+    if (createdLeadCount > 0) {
+      await markAdapterSuccess(adapter.source);
+    } else {
+      await markAdapterNoResult(adapter.source, noResultMessage);
+    }
 
     return { source: adapter.source, fetched: inputs.length, createdLeadCount };
   } catch (error) {

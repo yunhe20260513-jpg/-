@@ -1,35 +1,41 @@
 # 允禾桃園辦公室設備需求情報系統
 
-這是一個給影印機、事務機、印表機維修與租賃服務商使用的商機雷達 MVP。系統以桃園為優先市場，從真實公開資料與公開網頁訊號中整理出可能需要 OA / 辦公室設備服務的公司、機關與貼文。
+這是一套給影印機、事務機、印表機維修與租賃商使用的商機雷達 MVP。系統目標不是自動留言，也不是大量爬平台，而是每天整理出少量、真實、值得人工判斷的桃園辦公設備需求訊號。
 
-核心原則：
+## 產品原則
 
 - 不自動留言
 - 不自動私訊
 - 不登入 Facebook / Threads
-- 不使用 mock lead
-- 沒有真實 URL 或真實來源不建立資料
-- 寧願顯示 unavailable，也不假裝成功
-- OpenAI / AI 分析為選配，預設不依賴
+- 不建立 mock lead
+- 沒有真實 URL 或真實來源就不建立資料
+- 抓不到資料顯示 `no_result` 或 `unavailable`，不假裝成功
+- 搜尋品質優先於平台數量
+- OpenAI 可選，預設關閉
 
-## 目前 MVP 功能
+## 核心資料源
 
-- 桃園新成立公司雷達：匯入財政部營業稅籍 ZIP，篩選桃園公司並依行業與成立時間評分。
-- 租約成熟度雷達：找出成立 30-48 個月、可能進入 OA 租賃換約期的桃園公司。
-- PTT 真實文章雷達：抓取公開 PTT 看板文章。
-- 公開搜尋雷達：用公開搜尋結果監控 Threads、Dcard、PTT、Mobile01、Facebook 公開頁。
-- 標案雷達：嘗試讀取公開標案來源，抓不到時不產生假資料。
-- Signal 後台：S/A/B 分級、收藏、狀態追蹤、一鍵 Google / Maps / 原文連結。
+目前最值得打磨的是：
 
-## 技術棧
+1. **桃園新公司 / 租約成熟度**
+   - 使用財政部全國營業稅籍資料 ZIP 匯入 `CompanyCache`
+   - 篩出桃園公司、高文件需求產業、最近成立公司
+   - 另外找出成立約 24-72 個月、可能進入 OA 租賃換約期的公司
 
-- Node.js
-- TypeScript
-- Express
-- SQLite
-- Prisma ORM
-- dotenv
-- 原生 HTML / CSS / JavaScript 後台
+2. **PTT 真實文章**
+   - 抓取 Printer_scan / Office / SOHO
+   - 只有命中 OA、影印機、印表機、掃描、租賃等需求才建立 Lead
+   - 徵才、外包、短影音小編等非 OA 文章不建立商機，也不產生事務機罐頭回覆
+
+3. **標案雷達**
+   - 監控直接需求：影印機、事務機、印表機、掃描器、OA設備、租賃、維護、耗材
+   - 監控前置需求：辦公室裝修、行政空間整修、資訊設備、系統整合、教室設備、櫃台設備
+   - 前置需求只標記為 B 級觀察，不當成直接成交商機
+
+4. **公開搜尋引擎**
+   - 只作補充來源
+   - Threads / Facebook / Dcard / Mobile01 不保證每天有資料
+   - 沒有效結果時顯示 `no_result`
 
 ## 安裝
 
@@ -72,31 +78,41 @@ npm run seed
 
 ## 匯入桃園公司資料
 
-系統優先使用財政部營業稅籍 ZIP：
+手動下載財政部 ZIP：
 
 ```text
 https://eip.fia.gov.tw/data/BGMOPEN1.zip
 ```
 
-可自動下載，也可以手動下載後放到：
+放到：
 
 ```text
 data/company/BGMOPEN1.zip
 ```
 
-手動匯入：
+第一次建立歷史基準時建議：
+
+```env
+COMPANY_BASELINE_IMPORT=true
+```
+
+然後執行：
 
 ```bash
 npm run company:import-local
 ```
 
-重新整理快取：
+基準匯入完成後，改回：
+
+```env
+COMPANY_BASELINE_IMPORT=false
+```
+
+日常更新：
 
 ```bash
 npm run company-cache:refresh
 ```
-
-匯入後會產生 `IMPORT_REPORT.md`，記錄 ZIP hash、解析筆數、桃園筆數與排除原因。
 
 ## 啟動後台
 
@@ -110,53 +126,70 @@ npm run dev
 http://localhost:3000
 ```
 
-## 掃描
-
-執行全部掃描：
+## 手動掃描
 
 ```bash
 npm run scan:once
 ```
 
-後台也提供：
+後台也可以按「重新掃描」。
 
-- 掃描全部
-- 掃描桃園新公司
-- 掃描標案
+## 分級邏輯摘要
 
-## 首刷基準模式
+### PTT / 社群 Lead
 
-第一次匯入大量歷史公司資料時，建議先使用：
+先做分類：
 
-```env
-COMPANY_BASELINE_IMPORT=true
-```
+- `office_equipment_need`
+- `general_business`
+- `hiring`
+- `outsourcing`
+- `unrelated`
 
-這會建立 CompanyCache，但不會把大量歷史公司灌進正式 Signal。完成基準匯入後，再改回：
+只有 `office_equipment_need` 才能建立 Lead。必要條件是命中產品詞或租賃詞，例如影印機、印表機、事務機、掃描、列印、OA、租影印機、事務機租賃。
 
-```env
-COMPANY_BASELINE_IMPORT=false
-```
+### 標案
 
-## 資料品質規則
+- S 級：影印機 / 事務機 / 多功能事務機 / 租賃 / 維護，且有預算或截止日期
+- A 級：印表機 / 掃描器 / 耗材 / 資訊設備 / 辦公設備
+- B 級：辦公室裝修 / 行政空間整修 / 教室設備 / 系統整合，標記為前置需求
 
-- mock/test 資料不得進正式資料表
-- 沒有 URL 的公開網頁不建立 Lead
-- 公司資料以統編去重
-- Signal 以 `type + url` 去重
-- 公司成立日期解析失敗會被排除，不會預設為今天
-- ZIP 下載失敗時保留舊 cache，不清空資料
+### 租約成熟度
 
-## 來源限制
+改為加權計分：
 
-- Facebook / Threads 不登入、不抓登入後內容，只透過公開搜尋結果。
-- 搜尋引擎可能擋爬，失敗時會記錄狀態，不產生假資料。
-- 標案來源若 API 無資料或格式變動，會標示 unavailable / no_results。
-- Dcard / Mobile01 直接 adapter 尚未視為穩定來源，優先使用公開搜尋結果。
+- 成立 30-48 個月：+5
+- 成立 24-60 個月：+3
+- 成立 60-72 個月：+2
+- 高文件需求產業：+5
+- 桃園核心區域：+2
+- 使用統一發票：+1
+- 資本額 > 100 萬：+2
+- 同時存在競品抱怨 / 搬遷 / 徵才 / 辦公設備問題：+10
 
-## Git 注意事項
+建立條件：
 
-`.gitignore` 已排除：
+- rawScore >= 7 才建立
+- rawScore >= 11 為 S
+- rawScore 8-10 為 A
+- rawScore 7 為 B
+
+## Adapter 狀態
+
+- `success`：有建立有效資料
+- `no_result`：來源可用，但沒有符合條件的有效資料
+- `unavailable`：來源不可用或 API 不穩
+- `failed`：程式錯誤
+- `running`：執行中
+- `stale`：執行逾時
+
+## 為什麼不使用 LINE / 自動回覆
+
+第一版重點是「找到值得人工看的名單」。自動留言或私訊容易造成 spam、違反平台規則，也會傷害品牌。系統只提供原文連結、判斷原因、建議動作，由人工決定是否回覆。
+
+## Git 安全
+
+`.gitignore` 會排除：
 
 - `.env`
 - `node_modules/`
@@ -165,9 +198,9 @@ COMPANY_BASELINE_IMPORT=false
 - `data/company/*.zip`
 - `tmp/`
 
-不要把 API key、SQLite DB、ZIP 大檔、`node_modules` 推上 GitHub。
+不要上傳 API key、SQLite DB、ZIP、node_modules。
 
-## 常用 scripts
+## Scripts
 
 ```bash
 npm run dev

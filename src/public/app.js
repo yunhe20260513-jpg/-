@@ -205,9 +205,11 @@ function renderLead(lead) {
 }
 
 function renderTender(tender) {
+  const raw = parseJson(tender.rawJson || "{}");
+  const intentLabel = raw.intentType === "pre_intent" ? "\u524d\u7f6e\u9700\u6c42" : "\u76f4\u63a5\u9700\u6c42";
   return `
     <article class="company-card grade-${tender.grade}">
-      <div class="company-card-head"><h3>${escapeHtml(tender.tenderName)}</h3><span class="grade-badge grade-${tender.grade}">${tender.grade} \u7d1a</span></div>
+      <div class="company-card-head"><h3>${escapeHtml(tender.tenderName)}</h3><div class="badge-row"><span class="grade-badge grade-${tender.grade}">${tender.grade} \u7d1a</span><span class="intent-badge">${intentLabel}</span></div></div>
       <div class="company-grid">${field("\u6a5f\u95dc", tender.agencyName || "-")}${field("\u6a19\u6848\u7de8\u865f", tender.jobNumber)}${field("\u516c\u544a", formatDateOnly(tender.announceDate))}${field("\u622a\u6b62", formatDateOnly(tender.deadlineDate))}${field("\u9810\u7b97", formatBudget(tender.budgetAmount))}</div>
       <div class="reason">${escapeHtml(tender.reason)}</div>
       <div class="card-footer"><small>\u6a19\u6848\u96f7\u9054</small><div class="actions"><a class="btn ghost" href="${escapeAttr(tender.url)}" target="_blank" rel="noopener noreferrer">\u958b\u555f\u6a19\u6848</a></div></div>
@@ -280,7 +282,7 @@ function adapterLabel(source) {
 }
 
 function statusLabel(status) {
-  return { success: "\u6210\u529f", running: "\u57f7\u884c\u4e2d", unavailable: "\u4e0d\u53ef\u7528", failed: "\u5931\u6557", error: "\u932f\u8aa4", skipped: "\u5df2\u7565\u904e", no_results: "\u7121\u65b0\u8cc7\u6599", stale: "\u903e\u6642" }[status] || status;
+  return { success: "\u6210\u529f", running: "\u57f7\u884c\u4e2d", unavailable: "\u4e0d\u53ef\u7528", failed: "\u5931\u6557", error: "\u932f\u8aa4", skipped: "\u5df2\u7565\u904e", no_result: "\u7121\u6709\u6548\u8cc7\u6599", no_results: "\u7121\u65b0\u8cc7\u6599", stale: "\u903e\u6642" }[status] || status;
 }
 
 function formatCounts(counts) {

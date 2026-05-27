@@ -85,7 +85,7 @@ function bindStatFilters() {
     card.addEventListener("click", async () => {
       const filter = card.dataset.statFilter;
       if (filter === "company") {
-        filters.companyDays.value = "90";
+        filters.companyDays.value = "";
         filters.companyGrade.value = "";
         document.querySelector("#companyList")?.scrollIntoView({ behavior: "smooth", block: "start" });
       }

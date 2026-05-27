@@ -165,11 +165,28 @@ input {
   background: #fffaeb;
 }
 
+.top-contract-panel {
+  margin: -4px 0 24px;
+}
+
+.mini-section-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: #101828;
+}
+
+.mini-section-title span {
+  color: #667085;
+  font-size: 12px;
+}
+
 .top-contract-strip {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
-  margin: -4px 0 24px;
 }
 
 .top-contract-strip a {
@@ -183,6 +200,17 @@ input {
   color: #7a2e0e;
   text-decoration: none;
   font-size: 13px;
+}
+
+.top-contract-strip a:hover {
+  border-color: #f79009;
+  background: #fff6e5;
+}
+
+.top-contract-strip span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .toggle {

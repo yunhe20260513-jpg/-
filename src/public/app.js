@@ -68,10 +68,13 @@ async function loadStats() {
   if (topContract.length) {
     $("#todayStats").insertAdjacentHTML(
       "afterend",
-      `<div class="top-contract-strip">${topContract
-        .slice(0, 5)
-        .map((item) => `<a href="${escapeAttr(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}<b>${item.priorityScore}</b></a>`)
-        .join("")}</div>`
+      `<section class="top-contract-panel">
+        <div class="mini-section-title"><b>\u9ad8\u50f9\u503c\u63db\u7d04\u540d\u55ae TOP 5</b><span>\u6578\u5b57\u70ba priorityScore\uff0c\u9ede\u64ca\u5f8c\u7528 Google \u67e5\u8a62\u516c\u53f8</span></div>
+        <div class="top-contract-strip">${topContract
+          .slice(0, 5)
+          .map((item) => `<a href="${escapeAttr(companySearchUrl(item.title))}" target="_blank" rel="noopener noreferrer"><span>${escapeHtml(item.title)}</span><b>${item.priorityScore}</b></a>`)
+          .join("")}</div>
+      </section>`
     );
   }
 }
@@ -288,6 +291,10 @@ function statusLabel(status) {
 function formatCounts(counts) {
   const entries = Object.entries(counts || {});
   return entries.length ? entries.slice(0, 2).map(([key, value]) => `${key} ${value}`).join("\u3001") : "-";
+}
+
+function companySearchUrl(name) {
+  return `https://www.google.com/search?q=${encodeURIComponent(`${name || ""} 桃園 統一編號`)}`;
 }
 
 function formatMoney(value) {

@@ -50,7 +50,7 @@ export class ContractMaturityAdapter implements SignalAdapter {
       const scoring = await scoreContractMaturity(company);
       if (!scoring || scoring.rawScore < 7) continue;
 
-      const url = `https://findbiz.nat.gov.tw/fts/query/QuerySimpleList/QuerySimpleList.xhtml?queryText=${encodeURIComponent(company.taxId)}`;
+      const url = `https://www.google.com/search?q=${encodeURIComponent(`${company.name} ${company.taxId} 桃園`)}`;
       const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(company.address)}`;
 
       signals.push({
